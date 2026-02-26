@@ -1,0 +1,23 @@
+{
+  "name": "agent-workflow-platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "libs/*",
+    "services/*",
+    "frontend/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:infra": "docker compose -f docker-compose.infra.yml up -d",
+    "dev:stop": "docker compose -f docker-compose.infra.yml down",
+    "db:migrate": "npm run migrate --workspace=libs/prisma-client",
+    "db:generate": "npm run generate --workspace=libs/prisma-client",
+    "lint": "eslint . --ext .ts,.tsx",
+    "clean": "rm -rf node_modules libs/*/node_modules services/*/node_modules frontend/*/node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

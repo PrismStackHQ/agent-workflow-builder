@@ -1,0 +1,105 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  namespace: agent-workflow-system
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: postgres
+    database: agent_workflow
+  primary:
+    persistence:
+      size: 5Gi
+
+nats:
+  enabled: true
+  config:
+    jetstream:
+      enabled: true
+      memStorage:
+        size: 256Mi
+      fileStorage:
+        size: 1Gi
+
+services:
+  apiGateway:
+    replicas: 2
+    image:
+      repository: agent-workflow/api-gateway
+      tag: latest
+    port: 3001
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  onboardingService:
+    replicas: 1
+    image:
+      repository: agent-workflow/onboarding-service
+      tag: latest
+    port: 3010
+
+  connectionRegistry:
+    replicas: 1
+    image:
+      repository: agent-workflow/connection-registry
+      tag: latest
+    port: 3011
+
+  ragRegistry:
+    replicas: 1
+    image:
+      repository: agent-workflow/rag-registry
+      tag: latest
+    port: 3012
+
+  agentBuilder:
+    replicas: 1
+    image:
+      repository: agent-workflow/agent-builder
+      tag: latest
+    port: 3013
+
+  schedulerService:
+    replicas: 1
+    image:
+      repository: agent-workflow/scheduler-service
+      tag: latest
+    port: 3014
+
+  websocketService:
+    replicas: 2
+    image:
+      repository: agent-workflow/websocket-service
+      tag: latest
+    port: 3002
+
+  agentRuntime:
+    image:
+      repository: agent-workflow/agent-runtime
+      tag: latest
+
+  frontend:
+    replicas: 2
+    image:
+      repository: agent-workflow/frontend
+      tag: latest
+    port: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: agent-workflow.local
+      paths:
+        - path: /api
+          service: api-gateway
+        - path: /ws
+          service: websocket-service
+        - path: /
+          service: frontend

@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+.git
+.env
+.env.*
+!.env.example
+*.md
+.vscode
+.idea
+deploy/
+scripts/
+**/*.test.ts
+**/*.spec.ts

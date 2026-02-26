@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id          String    @id @default(uuid())
+  name        String
+  orgEmail    String    @unique
+  apiKey      String    @unique @default(uuid())
+  firebaseUid String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  config           CustomerConfig?
+  connectionRefs   ConnectionRef[]
+  agentDefinitions AgentDefinition[]
+
+  @@index([apiKey])
+  @@index([orgEmail])
+  @@index([firebaseUid])
+}
+
+model CustomerConfig {
+  id                       String   @id @default(uuid())
+  orgId                    String   @unique
+  connectionEndpointUrl    String?
+  connectionEndpointApiKey String?
+  ragEndpointUrl           String?
+  ragEndpointApiKey        String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+}
+
+enum ConnectionStatus {
+  PENDING
+  OAUTH_REQUIRED
+  READY
+  FAILED
+}
+
+model ConnectionRef {
+  id            String           @id @default(uuid())
+  orgId         String
+  provider      String
+  externalRefId String
+  status        ConnectionStatus @default(PENDING)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, provider, externalRefId])
+  @@index([orgId, provider])
+}
+
+enum AgentStatus {
+  DRAFT
+  WAITING_CONNECTIONS
+  READY
+  SCHEDULED
+  PAUSED
+  FAILED
+}
+
+model AgentDefinition {
+  id                     String      @id @default(uuid())
+  orgId                  String
+  name                   String
+  naturalLanguageCommand String
+  scheduleCron           String?
+  triggerType            String      @default("cron")
+  requiredConnections    Json        @default("[]")
+  steps                  Json        @default("[]")
+  status                 AgentStatus @default(DRAFT)
+  k8sCronJobName         String?
+  k8sNamespace           String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  runs         AgentRun[]
+
+  @@index([orgId])
+  @@index([status])
+}
+
+enum RunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model AgentRun {
+  id             String    @id @default(uuid())
+  agentId        String
+  startedAt      DateTime?
+  endedAt        DateTime?
+  status         RunStatus @default(PENDING)
+  stepsCompleted Int       @default(0)
+  logsPointer    String?
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+
+  agent AgentDefinition @relation(fields: [agentId], references: [id])
+
+  @@index([agentId, createdAt(sort: Desc)])
+  @@index([status])
+}

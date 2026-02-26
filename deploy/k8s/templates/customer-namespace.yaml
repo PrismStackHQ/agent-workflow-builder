@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: customer-{{ORG_ID}}
+  labels:
+    app.kubernetes.io/managed-by: agent-workflow
+    agent-workflow/org-id: "{{ORG_ID}}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+  namespace: customer-{{ORG_ID}}
+type: Opaque
+stringData:
+  url: "{{DATABASE_URL}}"

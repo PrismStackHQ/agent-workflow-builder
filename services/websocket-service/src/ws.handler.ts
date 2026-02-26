@@ -1,0 +1,127 @@
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { NatsService } from '@agent-workflow/nats-client';
+import { SUBJECTS } from '@agent-workflow/shared-types';
+import type {
+  ConnectionOAuthRequiredEvent,
+  AgentDefinitionCreatedEvent,
+  AgentScheduledEvent,
+  AgentRunStartedEvent,
+  AgentRunStepCompletedEvent,
+  AgentRunSucceededEvent,
+  AgentRunFailedEvent,
+  OrgCreatedEvent,
+  ConnectionEndpointConfiguredEvent,
+  RagConfiguredEvent,
+} from '@agent-workflow/shared-types';
+import { WsService } from './ws.service';
+
+@Injectable()
+export class WsHandler implements OnModuleInit {
+  private readonly logger = new Logger(WsHandler.name);
+
+  constructor(
+    private readonly nats: NatsService,
+    private readonly wsService: WsService,
+  ) {}
+
+  async onModuleInit() {
+    // Relay NATS events to WebSocket clients
+
+    await this.nats.subscribe<ConnectionOAuthRequiredEvent>(
+      SUBJECTS.CONNECTION_OAUTH_REQUIRED,
+      'ws-connection-oauth-required',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'wait_connection_oauth',
+          payload: {
+            agentDraftId: data.agentDraftId,
+            provider: data.provider,
+            connectionRefId: data.connectionRefId,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentDefinitionCreatedEvent>(
+      SUBJECTS.AGENT_DEFINITION_CREATED,
+      'ws-agent-definition-created',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'agent_created',
+          payload: {
+            agentId: data.agentId,
+            name: data.name,
+            scheduleCron: data.scheduleCron,
+            status: data.status,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentScheduledEvent>(
+      SUBJECTS.SCHEDULER_AGENT_SCHEDULED,
+      'ws-agent-scheduled',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'agent_scheduled',
+          payload: {
+            agentId: data.agentId,
+            cronJobName: data.cronJobName,
+            nextRunAt: data.nextRunAt,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunStartedEvent>(
+      SUBJECTS.RUNTIME_RUN_STARTED,
+      'ws-run-started',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'agent_run_started',
+          payload: { agentId: data.agentId, runId: data.runId, startedAt: data.startedAt },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunStepCompletedEvent>(
+      SUBJECTS.RUNTIME_RUN_STEP_COMPLETED,
+      'ws-run-step-completed',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'agent_run_step_completed',
+          payload: {
+            agentId: data.agentId,
+            runId: data.runId,
+            stepIndex: data.stepIndex,
+            stepName: data.stepName,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunSucceededEvent>(
+      SUBJECTS.RUNTIME_RUN_SUCCEEDED,
+      'ws-run-succeeded',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'agent_run_succeeded',
+          payload: { agentId: data.agentId, runId: data.runId, summary: data.summary },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunFailedEvent>(
+      SUBJECTS.RUNTIME_RUN_FAILED,
+      'ws-run-failed',
+      async (data) => {
+        this.wsService.sendToOrg(data.orgId, {
+          type: 'agent_run_failed',
+          payload: { agentId: data.agentId, runId: data.runId, error: data.error },
+        });
+      },
+    );
+
+    this.logger.log('WebSocket NATS event handlers initialized');
+  }
+}
