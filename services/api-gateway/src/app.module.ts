@@ -6,6 +6,7 @@ import { ConnectionsModule } from './connections/connections.module';
 import { RagModule } from './rag/rag.module';
 import { AgentsModule } from './agents/agents.module';
 import { AuthGatewayModule } from './auth/auth.module';
+import { WorkspacesModule } from './workspaces/workspaces.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -19,6 +20,7 @@ import { HealthController } from './health/health.controller';
     RagModule,
     AgentsModule,
     AuthGatewayModule,
+    WorkspacesModule,
   ],
   controllers: [HealthController],
 })

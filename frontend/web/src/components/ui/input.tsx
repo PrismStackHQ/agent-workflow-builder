@@ -35,6 +35,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               ${icon ? 'pl-11' : ''}
               ${isPassword ? 'pr-11' : ''}
               ${error ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-gray-200 hover:border-gray-300'}
+              disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
               ${className}
             `}
             {...props}

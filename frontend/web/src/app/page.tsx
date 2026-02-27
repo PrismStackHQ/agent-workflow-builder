@@ -12,7 +12,7 @@ export default function HomePage() {
     if (!user) {
       router.replace('/signin');
     } else if (orgId) {
-      router.replace('/agents');
+      router.replace('/dashboard');
     }
   }, [user, orgId, router]);
 

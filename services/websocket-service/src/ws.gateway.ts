@@ -15,6 +15,7 @@ import { WsService } from './ws.service';
 
 interface AuthenticatedSocket extends WebSocket {
   orgId?: string;
+  workspaceId?: string;
   orgName?: string;
 }
 
@@ -30,7 +31,6 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
 
   handleConnection(client: AuthenticatedSocket) {
     this.logger.log('New WebSocket connection');
-    // Client must send auth message first
     client.on('message', async (raw: Buffer) => {
       try {
         const msg = JSON.parse(raw.toString());
@@ -42,9 +42,9 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   handleDisconnect(client: AuthenticatedSocket) {
-    if (client.orgId) {
-      this.wsService.unregister(client.orgId, client);
-      this.logger.log(`Socket disconnected for org ${client.orgId}`);
+    if (client.workspaceId) {
+      this.wsService.unregister(client.workspaceId, client);
+      this.logger.log(`Socket disconnected for workspace ${client.workspaceId}`);
     }
   }
 
@@ -73,27 +73,29 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       return;
     }
 
-    const org = await this.prisma.organization.findFirst({
+    const workspace = await this.prisma.workspace.findFirst({
       where: { apiKey: payload.apiKey, deletedAt: null },
+      include: { organization: true },
     });
 
-    if (!org) {
+    if (!workspace) {
       this.send(client, { type: 'auth_failed', payload: { reason: 'Invalid API key' } });
       return;
     }
 
-    client.orgId = org.id;
-    client.orgName = org.name;
-    this.wsService.register(org.id, client);
+    client.orgId = workspace.orgId;
+    client.workspaceId = workspace.id;
+    client.orgName = workspace.organization.name;
+    this.wsService.register(workspace.id, client);
 
     this.send(client, {
       type: 'auth_success',
-      payload: { orgId: org.id, orgName: org.name },
+      payload: { orgId: workspace.orgId, workspaceId: workspace.id, orgName: workspace.organization.name },
     });
   }
 
   private async handleAgentCommand(client: AuthenticatedSocket, payload: { naturalLanguageCommand: string }) {
-    if (!client.orgId) {
+    if (!client.workspaceId) {
       this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
       return;
     }
@@ -103,6 +105,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
 
     await this.nats.publish(SUBJECTS.AGENT_COMMAND_SUBMITTED, {
       orgId: client.orgId,
+      workspaceId: client.workspaceId,
       commandId,
       naturalLanguageCommand: payload.naturalLanguageCommand,
     });
@@ -114,13 +117,14 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   private async handleOAuthComplete(client: AuthenticatedSocket, payload: { connectionRefId: string; provider: string }) {
-    if (!client.orgId) {
+    if (!client.workspaceId) {
       this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
       return;
     }
 
     await this.nats.publish(SUBJECTS.CONNECTION_OAUTH_COMPLETED, {
       orgId: client.orgId,
+      workspaceId: client.workspaceId,
       connectionRefId: payload.connectionRefId,
       provider: payload.provider,
     });

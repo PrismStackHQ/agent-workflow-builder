@@ -2,5 +2,6 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "tsConfigPath": "tsconfig.json"
-  }
+  },
+  "entryFile": "services/connection-registry/src/main"
 }

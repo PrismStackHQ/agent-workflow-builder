@@ -13,10 +13,10 @@ export class TokenFetcherService {
     private readonly httpService: HttpService,
   ) {}
 
-  async fetchTokens(orgId: string, connectionRefId: string): Promise<TokenResponse> {
-    const config = await this.prisma.customerConfig.findUnique({ where: { orgId } });
+  async fetchTokens(workspaceId: string, connectionRefId: string): Promise<TokenResponse> {
+    const config = await this.prisma.customerConfig.findUnique({ where: { workspaceId } });
     if (!config?.connectionEndpointUrl) {
-      throw new Error(`No connection endpoint configured for org ${orgId}`);
+      throw new Error(`No connection endpoint configured for workspace ${workspaceId}`);
     }
 
     const connRef = await this.prisma.connectionRef.findUnique({ where: { id: connectionRefId } });
@@ -24,7 +24,7 @@ export class TokenFetcherService {
       throw new Error(`Connection ref ${connectionRefId} not found`);
     }
 
-    this.logger.log(`Fetching tokens for org ${orgId}, ref ${connRef.externalRefId}`);
+    this.logger.log(`Fetching tokens for workspace ${workspaceId}, ref ${connRef.externalRefId}`);
 
     try {
       const response = await firstValueFrom(
@@ -47,17 +47,17 @@ export class TokenFetcherService {
     }
   }
 
-  async requestOAuth(orgId: string, provider: string, redirectUrl: string) {
-    const config = await this.prisma.customerConfig.findUnique({ where: { orgId } });
+  async requestOAuth(workspaceId: string, provider: string, redirectUrl: string) {
+    const config = await this.prisma.customerConfig.findUnique({ where: { workspaceId } });
     if (!config?.connectionEndpointUrl) {
-      throw new Error(`No connection endpoint configured for org ${orgId}`);
+      throw new Error(`No connection endpoint configured for workspace ${workspaceId}`);
     }
 
     try {
       const response = await firstValueFrom(
         this.httpService.post(
           `${config.connectionEndpointUrl}/connections/request-oauth`,
-          { provider, customerId: orgId, redirectUrl },
+          { provider, customerId: workspaceId, redirectUrl },
           {
             headers: {
               Authorization: `Bearer ${config.connectionEndpointApiKey}`,

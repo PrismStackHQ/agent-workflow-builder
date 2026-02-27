@@ -17,8 +17,8 @@ export class RagHandler implements OnModuleInit {
     await this.nats.handleRequest<RagQueryRequest, unknown>(
       SUBJECTS.RAG_QUERY_REQUEST,
       async (data) => {
-        this.logger.log(`RAG query for org ${data.orgId}: ${data.query}`);
-        return this.ragService.queryRag(data.orgId, data.query);
+        this.logger.log(`RAG query for workspace ${data.workspaceId}: ${data.query}`);
+        return this.ragService.queryRag(data.workspaceId, data.query);
       },
     );
 

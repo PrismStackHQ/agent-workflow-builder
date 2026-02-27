@@ -31,12 +31,28 @@ class ApiClient {
     return null;
   }
 
+  setWorkspaceId(workspaceId: string) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('workspaceId', workspaceId);
+    }
+  }
+
+  getWorkspaceId(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('workspaceId');
+    }
+    return null;
+  }
+
   clearAuth() {
     this.apiKey = null;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('apiKey');
       localStorage.removeItem('orgId');
       localStorage.removeItem('orgName');
+      localStorage.removeItem('workspaceId');
+      localStorage.removeItem('workspaceName');
+      localStorage.removeItem('workspaces');
     }
   }
 
@@ -74,6 +90,22 @@ class ApiClient {
     return res.json();
   }
 
+  // Workspace endpoints
+  async listWorkspaces() {
+    const res = await fetch(`${API_BASE}/workspaces`, { headers: this.headers() });
+    return res.json();
+  }
+
+  async createWorkspace(name: string) {
+    const res = await fetch(`${API_BASE}/workspaces`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ name }),
+    });
+    return res.json();
+  }
+
+  // Org endpoints
   async createOrg(name: string, orgEmail: string) {
     const res = await fetch(`${API_BASE}/orgs`, {
       method: 'POST',
@@ -88,11 +120,29 @@ class ApiClient {
     return res.json();
   }
 
-  async configureConnectionEndpoint(url: string, apiKey: string) {
+  async getConnectionConfig() {
+    const res = await fetch(`${API_BASE}/config/connection-endpoint`, { headers: this.headers() });
+    return res.json();
+  }
+
+  async configureConnectionEndpoint(provider: string, url: string, apiKey: string) {
     const res = await fetch(`${API_BASE}/config/connection-endpoint`, {
       method: 'PUT',
       headers: this.headers(),
-      body: JSON.stringify({ connectionEndpointUrl: url, connectionEndpointApiKey: apiKey }),
+      body: JSON.stringify({ integrationProvider: provider, connectionEndpointUrl: url, connectionEndpointApiKey: apiKey }),
+    });
+    return res.json();
+  }
+
+  async listAvailableIntegrations() {
+    const res = await fetch(`${API_BASE}/integrations`, { headers: this.headers() });
+    return res.json();
+  }
+
+  async syncIntegrations() {
+    const res = await fetch(`${API_BASE}/integrations/sync`, {
+      method: 'POST',
+      headers: this.headers(),
     });
     return res.json();
   }

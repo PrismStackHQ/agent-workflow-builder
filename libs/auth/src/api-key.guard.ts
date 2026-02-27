@@ -18,15 +18,17 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Missing X-API-Key header');
     }
 
-    const org = await this.prisma.organization.findFirst({
+    const workspace = await this.prisma.workspace.findFirst({
       where: { apiKey, deletedAt: null },
+      include: { organization: true },
     });
 
-    if (!org) {
+    if (!workspace) {
       throw new UnauthorizedException('Invalid API key');
     }
 
-    request.org = org;
+    request.workspace = workspace;
+    request.org = workspace.organization;
     return true;
   }
 }

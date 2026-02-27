@@ -11,32 +11,72 @@ model Organization {
   id          String    @id @default(uuid())
   name        String
   orgEmail    String    @unique
-  apiKey      String    @unique @default(uuid())
   firebaseUid String?   @unique
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  config           CustomerConfig?
-  connectionRefs   ConnectionRef[]
-  agentDefinitions AgentDefinition[]
+  workspaces Workspace[]
 
-  @@index([apiKey])
   @@index([orgEmail])
   @@index([firebaseUid])
 }
 
+model Workspace {
+  id        String    @id @default(uuid())
+  orgId     String
+  name      String
+  apiKey    String    @unique @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization            Organization           @relation(fields: [orgId], references: [id])
+  config                  CustomerConfig?
+  connectionRefs          ConnectionRef[]
+  agentDefinitions        AgentDefinition[]
+  availableIntegrations   AvailableIntegration[]
+
+  @@index([apiKey])
+  @@index([orgId])
+}
+
+enum IntegrationProvider {
+  NANGO
+  UNIPILE
+  MERGE
+}
+
 model CustomerConfig {
-  id                       String   @id @default(uuid())
-  orgId                    String   @unique
+  id                       String               @id @default(uuid())
+  workspaceId              String               @unique
+  integrationProvider      IntegrationProvider?
   connectionEndpointUrl    String?
   connectionEndpointApiKey String?
   ragEndpointUrl           String?
   ragEndpointApiKey        String?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  lastSyncedAt             DateTime?
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+model AvailableIntegration {
+  id                  String              @id @default(uuid())
+  workspaceId         String
+  integrationProvider IntegrationProvider
+  providerKey         String
+  displayName         String
+  logoUrl             String?
+  rawMetadata         Json?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, integrationProvider, providerKey])
+  @@index([workspaceId])
 }
 
 enum ConnectionStatus {
@@ -48,17 +88,17 @@ enum ConnectionStatus {
 
 model ConnectionRef {
   id            String           @id @default(uuid())
-  orgId         String
+  workspaceId   String
   provider      String
   externalRefId String
   status        ConnectionStatus @default(PENDING)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
 
-  @@unique([orgId, provider, externalRefId])
-  @@index([orgId, provider])
+  @@unique([workspaceId, provider, externalRefId])
+  @@index([workspaceId, provider])
 }
 
 enum AgentStatus {
@@ -72,7 +112,7 @@ enum AgentStatus {
 
 model AgentDefinition {
   id                     String      @id @default(uuid())
-  orgId                  String
+  workspaceId            String
   name                   String
   naturalLanguageCommand String
   scheduleCron           String?
@@ -85,10 +125,10 @@ model AgentDefinition {
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  runs         AgentRun[]
+  workspace Workspace    @relation(fields: [workspaceId], references: [id])
+  runs      AgentRun[]
 
-  @@index([orgId])
+  @@index([workspaceId])
   @@index([status])
 }
 

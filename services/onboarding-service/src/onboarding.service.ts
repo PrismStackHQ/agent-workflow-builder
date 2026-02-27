@@ -20,29 +20,41 @@ export class OnboardingService {
       },
     });
 
-    // Create default customer config
+    // Create default workspace
+    const workspace = await this.prisma.workspace.create({
+      data: { orgId: org.id, name: 'Default' },
+    });
+
+    // Create default customer config for workspace
     await this.prisma.customerConfig.create({
-      data: { orgId: org.id },
+      data: { workspaceId: workspace.id },
     });
 
     const event: OrgCreatedEvent = {
       orgId: org.id,
+      workspaceId: workspace.id,
       name: org.name,
       orgEmail: org.orgEmail,
-      apiKey: org.apiKey,
+      apiKey: workspace.apiKey,
+      workspaceName: workspace.name,
       createdAt: org.createdAt.toISOString(),
     };
 
     await this.nats.publish(SUBJECTS.ORG_CREATED, event);
-    this.logger.log(`Organization created: ${org.id}`);
+    this.logger.log(`Organization created: ${org.id}, workspace: ${workspace.id}`);
 
-    return { orgId: org.id, apiKey: org.apiKey };
+    return { orgId: org.id, workspaceId: workspace.id, apiKey: workspace.apiKey };
   }
 
   async getOrg(orgId: string) {
     return this.prisma.organization.findUnique({
       where: { id: orgId },
-      include: { config: true },
+      include: {
+        workspaces: {
+          where: { deletedAt: null },
+          include: { config: true },
+        },
+      },
     });
   }
 

@@ -12,21 +12,21 @@ export class ConnectionService {
     private readonly nats: NatsService,
   ) {}
 
-  async getConfig(orgId: string) {
-    return this.prisma.customerConfig.findUnique({ where: { orgId } });
+  async getConfig(workspaceId: string) {
+    return this.prisma.customerConfig.findUnique({ where: { workspaceId } });
   }
 
   async getConnectionRef(connectionRefId: string) {
     return this.prisma.connectionRef.findUnique({ where: { id: connectionRefId } });
   }
 
-  async getConnectionsByOrg(orgId: string) {
-    return this.prisma.connectionRef.findMany({ where: { orgId } });
+  async getConnectionsByWorkspace(workspaceId: string) {
+    return this.prisma.connectionRef.findMany({ where: { workspaceId } });
   }
 
-  async getReadyConnections(orgId: string, providers: string[]) {
+  async getReadyConnections(workspaceId: string, providers: string[]) {
     return this.prisma.connectionRef.findMany({
-      where: { orgId, provider: { in: providers }, status: 'READY' },
+      where: { workspaceId, provider: { in: providers }, status: 'READY' },
     });
   }
 }

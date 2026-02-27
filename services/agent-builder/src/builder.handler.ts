@@ -21,17 +21,17 @@ export class BuilderHandler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Handle incoming NL commands
     await this.nats.subscribe<AgentCommandSubmittedEvent>(
       SUBJECTS.AGENT_COMMAND_SUBMITTED,
       'agent-builder-command-submitted',
       async (data) => {
-        this.logger.log(`Processing command ${data.commandId} for org ${data.orgId}`);
+        this.logger.log(`Processing command ${data.commandId} for workspace ${data.workspaceId}`);
 
         try {
           const intent = this.nlParser.parse(data.naturalLanguageCommand);
           await this.assembler.assembleAgent(
             data.orgId,
+            data.workspaceId,
             data.commandId,
             data.naturalLanguageCommand,
             intent,
@@ -42,14 +42,12 @@ export class BuilderHandler implements OnModuleInit {
       },
     );
 
-    // Handle OAuth completion — check if agents can proceed
     await this.nats.subscribe<ConnectionOAuthCompletedEvent>(
       SUBJECTS.CONNECTION_OAUTH_COMPLETED,
       'agent-builder-oauth-completed',
       async (data) => {
-        this.logger.log(`OAuth completed for org ${data.orgId}, provider ${data.provider}`);
+        this.logger.log(`OAuth completed for workspace ${data.workspaceId}, provider ${data.provider}`);
 
-        // Update connection ref status
         if (data.connectionRefId) {
           await this.prisma.connectionRef.update({
             where: { id: data.connectionRefId },
@@ -57,15 +55,14 @@ export class BuilderHandler implements OnModuleInit {
           });
         }
 
-        // Check if any waiting agents can now proceed
         const waitingAgents = await this.prisma.agentDefinition.findMany({
-          where: { orgId: data.orgId, status: 'WAITING_CONNECTIONS' },
+          where: { workspaceId: data.workspaceId, status: 'WAITING_CONNECTIONS' },
         });
 
         for (const agent of waitingAgents) {
           const required = agent.requiredConnections as string[];
           const ready = await this.prisma.connectionRef.findMany({
-            where: { orgId: data.orgId, provider: { in: required }, status: 'READY' },
+            where: { workspaceId: data.workspaceId, provider: { in: required }, status: 'READY' },
           });
 
           const readyProviders = new Set(ready.map((r) => r.provider));
@@ -79,6 +76,7 @@ export class BuilderHandler implements OnModuleInit {
 
             await this.nats.publish(SUBJECTS.AGENT_DEFINITION_READY, {
               orgId: data.orgId,
+              workspaceId: data.workspaceId,
               agentId: agent.id,
             });
 

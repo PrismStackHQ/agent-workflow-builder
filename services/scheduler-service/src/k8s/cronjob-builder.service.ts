@@ -11,7 +11,7 @@ export class CronJobBuilderService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async createCronJob(agentId: string, orgId: string, namespace: string): Promise<string> {
+  async createCronJob(agentId: string, orgId: string, workspaceId: string, namespace: string): Promise<string> {
     const agent = await this.prisma.agentDefinition.findUnique({ where: { id: agentId } });
     if (!agent || !agent.scheduleCron) {
       throw new Error(`Agent ${agentId} not found or has no schedule`);
@@ -22,7 +22,6 @@ export class CronJobBuilderService {
 
     if (!this.k8s.isConnected()) {
       this.logger.warn(`K8s not connected, simulating CronJob creation: ${cronJobName}`);
-      // Update agent with simulated K8s info
       await this.prisma.agentDefinition.update({
         where: { id: agentId },
         data: {
@@ -52,6 +51,7 @@ export class CronJobBuilderService {
                       env: [
                         { name: 'AGENT_ID', value: agentId },
                         { name: 'ORG_ID', value: orgId },
+                        { name: 'WORKSPACE_ID', value: workspaceId },
                         { name: 'NATS_URL', value: process.env.NATS_URL || 'nats://nats.agent-workflow-system:4222' },
                       ],
                       envFrom: [

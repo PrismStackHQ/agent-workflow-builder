@@ -14,13 +14,12 @@ export class ConnectionHandler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Handle token fetch requests via NATS request-reply
     await this.nats.handleRequest<ConnectionTokensRequest, any>(
       SUBJECTS.CONNECTION_TOKENS_REQUEST,
       async (data) => {
-        this.logger.log(`Token request for org ${data.orgId}, ref ${data.connectionRefId}`);
+        this.logger.log(`Token request for workspace ${data.workspaceId}, ref ${data.connectionRefId}`);
         try {
-          return await this.tokenFetcher.fetchTokens(data.orgId, data.connectionRefId);
+          return await this.tokenFetcher.fetchTokens(data.workspaceId, data.connectionRefId);
         } catch (err) {
           return { error: String(err) };
         }

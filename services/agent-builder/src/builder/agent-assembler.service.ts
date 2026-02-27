@@ -15,26 +15,23 @@ export class AgentAssemblerService {
 
   async assembleAgent(
     orgId: string,
+    workspaceId: string,
     commandId: string,
     command: string,
     intent: ParsedIntent,
   ) {
-    // Check which connections are already ready
     const readyConnections = await this.prisma.connectionRef.findMany({
-      where: { orgId, provider: { in: intent.connectors }, status: 'READY' },
+      where: { workspaceId, provider: { in: intent.connectors }, status: 'READY' },
     });
     const readyProviders = new Set(readyConnections.map((c) => c.provider));
     const missingProviders = intent.connectors.filter((c) => !readyProviders.has(c));
 
-    // Generate a name from the command
     const name = command.length > 50 ? command.substring(0, 47) + '...' : command;
-
     const status = missingProviders.length > 0 ? 'WAITING_CONNECTIONS' : 'READY';
 
-    // Create the agent definition
     const agent = await this.prisma.agentDefinition.create({
       data: {
-        orgId,
+        workspaceId,
         name,
         naturalLanguageCommand: command,
         scheduleCron: intent.trigger.schedule || null,
@@ -47,9 +44,9 @@ export class AgentAssemblerService {
 
     this.logger.log(`Agent ${agent.id} created with status ${status}`);
 
-    // Emit agent created event
     await this.nats.publish(SUBJECTS.AGENT_DEFINITION_CREATED, {
       orgId,
+      workspaceId,
       agentId: agent.id,
       name: agent.name,
       scheduleCron: agent.scheduleCron,
@@ -58,20 +55,20 @@ export class AgentAssemblerService {
       status: agent.status,
     });
 
-    // If connections are missing, emit oauth required events
     if (missingProviders.length > 0) {
       for (const provider of missingProviders) {
         await this.nats.publish(SUBJECTS.CONNECTION_OAUTH_REQUIRED, {
           orgId,
+          workspaceId,
           agentDraftId: agent.id,
           provider,
         });
         this.logger.log(`OAuth required for provider: ${provider}`);
       }
     } else {
-      // All connections ready, emit ready event
       await this.nats.publish(SUBJECTS.AGENT_DEFINITION_READY, {
         orgId,
+        workspaceId,
         agentId: agent.id,
       });
     }

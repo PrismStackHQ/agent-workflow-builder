@@ -7,8 +7,8 @@ export class NamespaceProvisionerService {
 
   constructor(private readonly k8s: K8sClientService) {}
 
-  async provisionNamespace(orgId: string): Promise<string> {
-    const nsName = `customer-${orgId}`;
+  async provisionNamespace(workspaceId: string): Promise<string> {
+    const nsName = `workspace-${workspaceId}`;
 
     if (!this.k8s.isConnected()) {
       this.logger.warn(`K8s not connected, skipping namespace creation for ${nsName}`);
@@ -16,25 +16,22 @@ export class NamespaceProvisionerService {
     }
 
     try {
-      // Check if namespace already exists
       await this.k8s.getCoreApi().readNamespace({ name: nsName });
       this.logger.log(`Namespace ${nsName} already exists`);
       return nsName;
     } catch {
-      // Create the namespace
       await this.k8s.getCoreApi().createNamespace({
         body: {
           metadata: {
             name: nsName,
             labels: {
               'app.kubernetes.io/managed-by': 'agent-workflow',
-              'agent-workflow/org-id': orgId,
+              'agent-workflow/workspace-id': workspaceId,
             },
           },
         },
       });
 
-      // Create DB credentials secret
       await this.k8s.getCoreApi().createNamespacedSecret({
         namespace: nsName,
         body: {

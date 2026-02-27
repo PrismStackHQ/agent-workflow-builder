@@ -1,13 +1,14 @@
 'use client';
 
 import { createContext, useContext, ReactNode } from 'react';
-import { useAuth, AuthState } from '@/hooks/use-auth';
-import { User } from 'firebase/auth';
+import { useAuth, AuthState, WorkspaceInfo } from '@/hooks/use-auth';
 
 interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string, orgName: string) => Promise<any>;
   signOut: () => Promise<void>;
+  switchWorkspace: (workspace: WorkspaceInfo) => void;
+  addWorkspace: (workspace: WorkspaceInfo) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);

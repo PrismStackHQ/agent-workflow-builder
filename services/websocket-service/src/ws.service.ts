@@ -4,30 +4,30 @@ import { WebSocket } from 'ws';
 @Injectable()
 export class WsService {
   private readonly logger = new Logger(WsService.name);
-  private readonly orgSockets = new Map<string, Set<WebSocket>>();
+  private readonly workspaceSockets = new Map<string, Set<WebSocket>>();
 
-  register(orgId: string, socket: WebSocket) {
-    if (!this.orgSockets.has(orgId)) {
-      this.orgSockets.set(orgId, new Set());
+  register(workspaceId: string, socket: WebSocket) {
+    if (!this.workspaceSockets.has(workspaceId)) {
+      this.workspaceSockets.set(workspaceId, new Set());
     }
-    this.orgSockets.get(orgId)!.add(socket);
-    this.logger.log(`Socket registered for org ${orgId}`);
+    this.workspaceSockets.get(workspaceId)!.add(socket);
+    this.logger.log(`Socket registered for workspace ${workspaceId}`);
   }
 
-  unregister(orgId: string, socket: WebSocket) {
-    const sockets = this.orgSockets.get(orgId);
+  unregister(workspaceId: string, socket: WebSocket) {
+    const sockets = this.workspaceSockets.get(workspaceId);
     if (sockets) {
       sockets.delete(socket);
       if (sockets.size === 0) {
-        this.orgSockets.delete(orgId);
+        this.workspaceSockets.delete(workspaceId);
       }
     }
   }
 
-  sendToOrg(orgId: string, message: { type: string; payload?: unknown }) {
-    const sockets = this.orgSockets.get(orgId);
+  sendToWorkspace(workspaceId: string, message: { type: string; payload?: unknown }) {
+    const sockets = this.workspaceSockets.get(workspaceId);
     if (!sockets || sockets.size === 0) {
-      this.logger.debug(`No sockets for org ${orgId}, dropping message ${message.type}`);
+      this.logger.debug(`No sockets for workspace ${workspaceId}, dropping message ${message.type}`);
       return;
     }
 

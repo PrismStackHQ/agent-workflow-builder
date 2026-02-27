@@ -25,13 +25,11 @@ export class WsHandler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Relay NATS events to WebSocket clients
-
     await this.nats.subscribe<ConnectionOAuthRequiredEvent>(
       SUBJECTS.CONNECTION_OAUTH_REQUIRED,
       'ws-connection-oauth-required',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'wait_connection_oauth',
           payload: {
             agentDraftId: data.agentDraftId,
@@ -46,7 +44,7 @@ export class WsHandler implements OnModuleInit {
       SUBJECTS.AGENT_DEFINITION_CREATED,
       'ws-agent-definition-created',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_created',
           payload: {
             agentId: data.agentId,
@@ -62,7 +60,7 @@ export class WsHandler implements OnModuleInit {
       SUBJECTS.SCHEDULER_AGENT_SCHEDULED,
       'ws-agent-scheduled',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_scheduled',
           payload: {
             agentId: data.agentId,
@@ -77,7 +75,7 @@ export class WsHandler implements OnModuleInit {
       SUBJECTS.RUNTIME_RUN_STARTED,
       'ws-run-started',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_run_started',
           payload: { agentId: data.agentId, runId: data.runId, startedAt: data.startedAt },
         });
@@ -88,7 +86,7 @@ export class WsHandler implements OnModuleInit {
       SUBJECTS.RUNTIME_RUN_STEP_COMPLETED,
       'ws-run-step-completed',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_run_step_completed',
           payload: {
             agentId: data.agentId,
@@ -104,7 +102,7 @@ export class WsHandler implements OnModuleInit {
       SUBJECTS.RUNTIME_RUN_SUCCEEDED,
       'ws-run-succeeded',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_run_succeeded',
           payload: { agentId: data.agentId, runId: data.runId, summary: data.summary },
         });
@@ -115,7 +113,7 @@ export class WsHandler implements OnModuleInit {
       SUBJECTS.RUNTIME_RUN_FAILED,
       'ws-run-failed',
       async (data) => {
-        this.wsService.sendToOrg(data.orgId, {
+        this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_run_failed',
           payload: { agentId: data.agentId, runId: data.runId, error: data.error },
         });

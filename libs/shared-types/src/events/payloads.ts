@@ -3,9 +3,11 @@ import { AgentStep } from '../interfaces';
 // Onboarding events
 export interface OrgCreatedEvent {
   orgId: string;
+  workspaceId: string;
   name: string;
   orgEmail: string;
   apiKey: string;
+  workspaceName: string;
   createdAt: string;
 }
 
@@ -18,12 +20,14 @@ export interface OrgUpdatedEvent {
 // Connection events
 export interface ConnectionEndpointConfiguredEvent {
   orgId: string;
+  workspaceId: string;
   connectionEndpointUrl: string;
   configuredAt: string;
 }
 
 export interface ConnectionRefCreatedEvent {
   orgId: string;
+  workspaceId: string;
   connectionRefId: string;
   provider: string;
   externalRefId: string;
@@ -32,12 +36,14 @@ export interface ConnectionRefCreatedEvent {
 
 export interface ConnectionRefReadyEvent {
   orgId: string;
+  workspaceId: string;
   connectionRefId: string;
   provider: string;
 }
 
 export interface ConnectionOAuthRequiredEvent {
   orgId: string;
+  workspaceId: string;
   agentDraftId: string;
   provider: string;
   connectionRefId?: string;
@@ -45,36 +51,42 @@ export interface ConnectionOAuthRequiredEvent {
 
 export interface ConnectionOAuthCompletedEvent {
   orgId: string;
+  workspaceId: string;
   connectionRefId: string;
   provider: string;
 }
 
 export interface ConnectionTokensRequest {
   orgId: string;
+  workspaceId: string;
   connectionRefId: string;
 }
 
 // RAG events
 export interface RagConfiguredEvent {
   orgId: string;
+  workspaceId: string;
   ragEndpointUrl: string;
   configuredAt: string;
 }
 
 export interface RagQueryRequest {
   orgId: string;
+  workspaceId: string;
   query: string;
 }
 
 // Agent events
 export interface AgentCommandSubmittedEvent {
   orgId: string;
+  workspaceId: string;
   commandId: string;
   naturalLanguageCommand: string;
 }
 
 export interface AgentDefinitionCreatedEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   name: string;
   scheduleCron: string | null;
@@ -85,12 +97,14 @@ export interface AgentDefinitionCreatedEvent {
 
 export interface AgentDefinitionReadyEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
 }
 
 // Scheduler events
 export interface AgentScheduledEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   cronJobName: string;
   namespace: string;
@@ -99,6 +113,7 @@ export interface AgentScheduledEvent {
 
 export interface AgentRunTriggeredEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   runId: string;
 }
@@ -106,6 +121,7 @@ export interface AgentRunTriggeredEvent {
 // Runtime events
 export interface AgentRunStartedEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   runId: string;
   startedAt: string;
@@ -113,6 +129,7 @@ export interface AgentRunStartedEvent {
 
 export interface AgentRunStepCompletedEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   runId: string;
   stepIndex: number;
@@ -122,6 +139,7 @@ export interface AgentRunStepCompletedEvent {
 
 export interface AgentRunSucceededEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   runId: string;
   endedAt: string;
@@ -130,6 +148,7 @@ export interface AgentRunSucceededEvent {
 
 export interface AgentRunFailedEvent {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   runId: string;
   endedAt: string;

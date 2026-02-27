@@ -12,10 +12,10 @@ export class RagService {
     private readonly httpService: HttpService,
   ) {}
 
-  async queryRag(orgId: string, query: string): Promise<unknown> {
-    const config = await this.prisma.customerConfig.findUnique({ where: { orgId } });
+  async queryRag(workspaceId: string, query: string): Promise<unknown> {
+    const config = await this.prisma.customerConfig.findUnique({ where: { workspaceId } });
     if (!config?.ragEndpointUrl) {
-      this.logger.warn(`No RAG endpoint configured for org ${orgId}`);
+      this.logger.warn(`No RAG endpoint configured for workspace ${workspaceId}`);
       return { results: [] };
     }
 

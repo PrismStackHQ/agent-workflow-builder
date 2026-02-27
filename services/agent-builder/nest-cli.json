@@ -2,5 +2,6 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "tsConfigPath": "tsconfig.json"
-  }
+  },
+  "entryFile": "services/agent-builder/src/main"
 }

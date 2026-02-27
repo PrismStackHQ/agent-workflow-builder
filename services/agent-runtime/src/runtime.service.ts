@@ -30,7 +30,7 @@ export class RuntimeService {
     ]);
   }
 
-  async executeRun(agentId: string, orgId: string): Promise<void> {
+  async executeRun(agentId: string, orgId: string, workspaceId?: string): Promise<void> {
     const runId = randomUUID();
 
     const agent = await this.prisma.agentDefinition.findUnique({ where: { id: agentId } });
@@ -38,7 +38,8 @@ export class RuntimeService {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    // Create run record
+    const wsId = workspaceId || agent.workspaceId;
+
     const run = await this.prisma.agentRun.create({
       data: {
         id: runId,
@@ -50,6 +51,7 @@ export class RuntimeService {
 
     await this.nats.publish(SUBJECTS.RUNTIME_RUN_STARTED, {
       orgId,
+      workspaceId: wsId,
       agentId,
       runId,
       startedAt: run.startedAt!.toISOString(),
@@ -58,8 +60,7 @@ export class RuntimeService {
     const steps = agent.steps as unknown as AgentStep[];
     const requiredConnections = agent.requiredConnections as string[];
 
-    // Resolve tokens
-    const tokens = await this.tokenResolver.resolveTokens(orgId, requiredConnections);
+    const tokens = await this.tokenResolver.resolveTokens(wsId, requiredConnections);
 
     const context: StepContext = {
       orgId,
@@ -75,7 +76,6 @@ export class RuntimeService {
 
         const adapter = this.adapterMap.get(step.action);
         if (!adapter) {
-          // Use a generic passthrough for unknown actions
           this.logger.warn(`No adapter for action ${step.action}, skipping`);
           context.previousResults.push({ skipped: true, action: step.action });
         } else {
@@ -90,6 +90,7 @@ export class RuntimeService {
 
         await this.nats.publish(SUBJECTS.RUNTIME_RUN_STEP_COMPLETED, {
           orgId,
+          workspaceId: wsId,
           agentId,
           runId,
           stepIndex: step.index,
@@ -98,7 +99,6 @@ export class RuntimeService {
         });
       }
 
-      // Run succeeded
       const endedAt = new Date();
       await this.prisma.agentRun.update({
         where: { id: runId },
@@ -107,6 +107,7 @@ export class RuntimeService {
 
       await this.nats.publish(SUBJECTS.RUNTIME_RUN_SUCCEEDED, {
         orgId,
+        workspaceId: wsId,
         agentId,
         runId,
         endedAt: endedAt.toISOString(),
@@ -125,6 +126,7 @@ export class RuntimeService {
 
       await this.nats.publish(SUBJECTS.RUNTIME_RUN_FAILED, {
         orgId,
+        workspaceId: wsId,
         agentId,
         runId,
         endedAt: endedAt.toISOString(),

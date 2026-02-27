@@ -14,14 +14,13 @@ export class RuntimeHandler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Listen for run triggers (when running as a long-lived service in dev mode)
     await this.nats.subscribe<AgentRunTriggeredEvent>(
       SUBJECTS.SCHEDULER_RUN_TRIGGERED,
       'runtime-run-triggered',
       async (data) => {
-        this.logger.log(`Run triggered for agent ${data.agentId}, org ${data.orgId}`);
+        this.logger.log(`Run triggered for agent ${data.agentId}, workspace ${data.workspaceId}`);
         try {
-          await this.runtime.executeRun(data.agentId, data.orgId);
+          await this.runtime.executeRun(data.agentId, data.orgId, data.workspaceId);
         } catch (err) {
           this.logger.error(`Run execution failed: ${err}`);
         }

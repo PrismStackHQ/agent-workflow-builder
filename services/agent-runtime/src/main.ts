@@ -7,14 +7,15 @@ async function bootstrap() {
   const logger = new Logger('AgentRuntime');
   const agentId = process.env.AGENT_ID;
   const orgId = process.env.ORG_ID;
+  const workspaceId = process.env.WORKSPACE_ID;
 
-  if (agentId && orgId) {
+  if (agentId && orgId && workspaceId) {
     // Running as a K8s Job — execute once and exit
-    logger.log(`Running agent ${agentId} for org ${orgId}`);
+    logger.log(`Running agent ${agentId} for workspace ${workspaceId}`);
     const app = await NestFactory.createApplicationContext(AppModule);
     const runtime = app.get(RuntimeService);
     try {
-      await runtime.executeRun(agentId, orgId);
+      await runtime.executeRun(agentId, orgId, workspaceId);
     } catch (err) {
       logger.error(`Run failed: ${err}`);
       process.exit(1);

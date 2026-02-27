@@ -19,36 +19,36 @@ export class SchedulerHandler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Provision namespace when org is created
     await this.nats.subscribe<OrgCreatedEvent>(
       SUBJECTS.ORG_CREATED,
       'scheduler-org-created',
       async (data) => {
-        this.logger.log(`Provisioning namespace for org ${data.orgId}`);
+        this.logger.log(`Provisioning namespace for workspace ${data.workspaceId}`);
         try {
-          await this.nsProvisioner.provisionNamespace(data.orgId);
+          await this.nsProvisioner.provisionNamespace(data.workspaceId);
         } catch (err) {
           this.logger.error(`Failed to provision namespace: ${err}`);
         }
       },
     );
 
-    // Schedule agent when definition is ready
     await this.nats.subscribe<AgentDefinitionReadyEvent>(
       SUBJECTS.AGENT_DEFINITION_READY,
       'scheduler-agent-ready',
       async (data) => {
-        this.logger.log(`Scheduling agent ${data.agentId} for org ${data.orgId}`);
+        this.logger.log(`Scheduling agent ${data.agentId} for workspace ${data.workspaceId}`);
         try {
-          const namespace = `customer-${data.orgId}`;
+          const namespace = `workspace-${data.workspaceId}`;
           const cronJobName = await this.cronJobBuilder.createCronJob(
             data.agentId,
             data.orgId,
+            data.workspaceId,
             namespace,
           );
 
           await this.nats.publish(SUBJECTS.SCHEDULER_AGENT_SCHEDULED, {
             orgId: data.orgId,
+            workspaceId: data.workspaceId,
             agentId: data.agentId,
             cronJobName,
             namespace,

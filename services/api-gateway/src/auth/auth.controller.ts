@@ -41,7 +41,6 @@ export class AuthController {
   @Post('signup')
   @HttpCode(HttpStatus.CREATED)
   async signUp(@Body() body: SignUpBody) {
-    // Check if firebaseUid already has an org
     const existing = await this.prisma.organization.findUnique({
       where: { firebaseUid: body.firebaseUid },
     });
@@ -49,7 +48,6 @@ export class AuthController {
       throw new ConflictException('An organization already exists for this account');
     }
 
-    // Check if orgEmail is taken
     const emailTaken = await this.prisma.organization.findUnique({
       where: { orgEmail: body.orgEmail },
     });
@@ -65,22 +63,32 @@ export class AuthController {
       },
     });
 
+    // Create default workspace
+    const workspace = await this.prisma.workspace.create({
+      data: { orgId: org.id, name: 'Default' },
+    });
+
+    // Create config for the default workspace
     await this.prisma.customerConfig.create({
-      data: { orgId: org.id },
+      data: { workspaceId: workspace.id },
     });
 
     const event: OrgCreatedEvent = {
       orgId: org.id,
+      workspaceId: workspace.id,
       name: org.name,
       orgEmail: org.orgEmail,
-      apiKey: org.apiKey,
+      apiKey: workspace.apiKey,
+      workspaceName: workspace.name,
       createdAt: org.createdAt.toISOString(),
     };
     await this.nats.publish(SUBJECTS.ORG_CREATED, event);
 
     return {
       orgId: org.id,
-      apiKey: org.apiKey,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      apiKey: workspace.apiKey,
       name: org.name,
       orgEmail: org.orgEmail,
     };
@@ -91,17 +99,32 @@ export class AuthController {
   async login(@Body() body: LoginBody) {
     const org = await this.prisma.organization.findUnique({
       where: { firebaseUid: body.firebaseUid },
+      include: {
+        workspaces: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
     if (!org || org.deletedAt) {
       throw new UnauthorizedException('No organization found for this account');
     }
 
+    const defaultWorkspace = org.workspaces[0];
+
     return {
       orgId: org.id,
-      apiKey: org.apiKey,
       name: org.name,
       orgEmail: org.orgEmail,
+      workspaceId: defaultWorkspace?.id,
+      workspaceName: defaultWorkspace?.name,
+      apiKey: defaultWorkspace?.apiKey,
+      workspaces: org.workspaces.map((w) => ({
+        id: w.id,
+        name: w.name,
+        apiKey: w.apiKey,
+      })),
     };
   }
 }

@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
 import { NatsService } from '@agent-workflow/nats-client';
-import { ApiKeyGuard, CurrentOrg } from '@agent-workflow/auth';
+import { ApiKeyGuard, CurrentWorkspace } from '@agent-workflow/auth';
 import { SUBJECTS, OrgCreatedEvent } from '@agent-workflow/shared-types';
 
 class CreateOrgBody {
@@ -39,20 +39,32 @@ export class OnboardingController {
       data: { name: body.name, orgEmail: body.orgEmail },
     });
 
+    // Create default workspace
+    const workspace = await this.prisma.workspace.create({
+      data: { orgId: org.id, name: 'Default' },
+    });
+
+    // Create config for the default workspace
     await this.prisma.customerConfig.create({
-      data: { orgId: org.id },
+      data: { workspaceId: workspace.id },
     });
 
     const event: OrgCreatedEvent = {
       orgId: org.id,
+      workspaceId: workspace.id,
       name: org.name,
       orgEmail: org.orgEmail,
-      apiKey: org.apiKey,
+      apiKey: workspace.apiKey,
+      workspaceName: workspace.name,
       createdAt: org.createdAt.toISOString(),
     };
     await this.nats.publish(SUBJECTS.ORG_CREATED, event);
 
-    return { orgId: org.id, apiKey: org.apiKey };
+    return {
+      orgId: org.id,
+      workspaceId: workspace.id,
+      apiKey: workspace.apiKey,
+    };
   }
 
   @Get(':orgId')
@@ -60,7 +72,12 @@ export class OnboardingController {
   async getOrg(@Param('orgId') orgId: string) {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      include: { config: true },
+      include: {
+        workspaces: {
+          where: { deletedAt: null },
+          include: { config: true },
+        },
+      },
     });
     if (!org) throw new NotFoundException('Organization not found');
     return org;

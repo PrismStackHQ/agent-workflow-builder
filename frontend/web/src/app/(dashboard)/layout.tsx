@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/components/auth-provider';
 import { Sidebar } from '@/components/sidebar';
 
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, initialized } = useAuthContext();
 

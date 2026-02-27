@@ -13,25 +13,23 @@ export class TokenResolverService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async resolveTokens(orgId: string, providers: string[]): Promise<Map<string, TokenResponse>> {
+  async resolveTokens(workspaceId: string, providers: string[]): Promise<Map<string, TokenResponse>> {
     const tokens = new Map<string, TokenResponse>();
 
-    // Find connection refs for each provider
     const refs = await this.prisma.connectionRef.findMany({
-      where: { orgId, provider: { in: providers }, status: 'READY' },
+      where: { workspaceId, provider: { in: providers }, status: 'READY' },
     });
 
     for (const ref of refs) {
       try {
         const token = await this.nats.request<ConnectionTokensRequest, TokenResponse>(
           SUBJECTS.CONNECTION_TOKENS_REQUEST,
-          { orgId, connectionRefId: ref.id },
+          { orgId: ref.workspaceId, workspaceId, connectionRefId: ref.id },
           10000,
         );
 
         if ('error' in (token as any)) {
           this.logger.warn(`Token fetch error for ${ref.provider}: ${(token as any).error}`);
-          // Use a mock token for development
           tokens.set(ref.provider, {
             accessToken: `mock-token-${ref.provider}`,
             expiresAt: new Date(Date.now() + 3600000).toISOString(),
