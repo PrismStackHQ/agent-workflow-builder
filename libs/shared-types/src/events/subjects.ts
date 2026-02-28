@@ -29,6 +29,15 @@ export const SUBJECTS = {
   RUNTIME_RUN_STEP_COMPLETED: 'runtime.run.step.completed',
   RUNTIME_RUN_SUCCEEDED: 'runtime.run.succeeded',
   RUNTIME_RUN_FAILED: 'runtime.run.failed',
+  RUNTIME_RUN_PAUSED: 'runtime.run.paused',
+  RUNTIME_RUN_RESUME_REQUESTED: 'runtime.run.resume.requested',
+  RUNTIME_RUN_RESUMED: 'runtime.run.resumed',
+
+  // Tools
+  TOOL_REGISTRY_SYNCED: 'tools.registry.synced',
+
+  // Connection completion (end-user OAuth)
+  CONNECTION_COMPLETED: 'connection.completed',
 } as const;
 
 export const STREAM_NAME = 'AGENT_WORKFLOW';
@@ -40,4 +49,5 @@ export const STREAM_SUBJECTS = [
   'agent.>',
   'scheduler.>',
   'runtime.>',
+  'tools.>',
 ];

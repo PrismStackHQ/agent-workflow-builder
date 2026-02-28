@@ -14,6 +14,7 @@ import { NatsService } from '@agent-workflow/nats-client';
 import { ApiKeyGuard, CurrentWorkspace } from '@agent-workflow/auth';
 import { SUBJECTS } from '@agent-workflow/shared-types';
 import { IntegrationFetcherService } from './integration-fetcher.service';
+import { ProviderExecutorService, ToolRegistryService } from '@agent-workflow/integration-provider';
 
 @Controller()
 export class ConnectionsController {
@@ -23,6 +24,8 @@ export class ConnectionsController {
     private readonly prisma: PrismaService,
     private readonly nats: NatsService,
     private readonly integrationFetcher: IntegrationFetcherService,
+    private readonly providerExecutor: ProviderExecutorService,
+    private readonly toolRegistry: ToolRegistryService,
   ) {}
 
   @Get('config/connection-endpoint')
@@ -104,6 +107,14 @@ export class ConnectionsController {
       this.logger.error(`Failed to fetch integrations from provider: ${err}`);
     }
 
+    // Also sync tool definitions from the provider
+    try {
+      const toolResult = await this.toolRegistry.syncTools(workspace.id);
+      this.logger.log(`Synced ${toolResult.toolCount} tools for workspace ${workspace.id}`);
+    } catch (err) {
+      this.logger.error(`Failed to sync tools from provider: ${err}`);
+    }
+
     const config = await this.prisma.customerConfig.findUnique({
       where: { workspaceId: workspace.id },
       select: { lastSyncedAt: true },
@@ -167,6 +178,37 @@ export class ConnectionsController {
       where: { workspaceId: workspace.id },
       orderBy: { displayName: 'asc' },
     });
+  }
+
+  @Post('connections/check')
+  @UseGuards(ApiKeyGuard)
+  async checkConnection(
+    @CurrentWorkspace() workspace: any,
+    @Body() body: { integrationKey: string; connectionId: string },
+  ) {
+    const result = await this.providerExecutor.checkConnection(
+      workspace.id,
+      body.connectionId,
+      body.integrationKey,
+    );
+    return result;
+  }
+
+  @Post('connections/complete')
+  @UseGuards(ApiKeyGuard)
+  async connectionComplete(
+    @CurrentWorkspace() workspace: any,
+    @Body() body: { integrationKey: string; connectionId: string; endUserId: string },
+  ) {
+    await this.nats.publish(SUBJECTS.CONNECTION_COMPLETED, {
+      orgId: workspace.orgId,
+      workspaceId: workspace.id,
+      integrationKey: body.integrationKey,
+      connectionId: body.connectionId,
+      endUserId: body.endUserId,
+    });
+
+    return { ok: true };
   }
 
   @Post('connections')

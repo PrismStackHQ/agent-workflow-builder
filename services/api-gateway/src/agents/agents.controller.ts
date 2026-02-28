@@ -81,6 +81,29 @@ export class AgentsController {
     return run;
   }
 
+  @Post(':agentId/runs/:runId/resume')
+  @UseGuards(ApiKeyGuard)
+  async resumeRun(
+    @CurrentWorkspace() workspace: any,
+    @Param('agentId') agentId: string,
+    @Param('runId') runId: string,
+    @Body() body: { connectionId: string },
+  ) {
+    const run = await this.prisma.agentRun.findFirst({
+      where: { id: runId, agent: { id: agentId, workspaceId: workspace.id }, status: 'PAUSED' },
+    });
+    if (!run) throw new NotFoundException('Paused run not found');
+
+    await this.nats.publish(SUBJECTS.RUNTIME_RUN_RESUME_REQUESTED, {
+      orgId: workspace.orgId,
+      workspaceId: workspace.id,
+      runId,
+      connectionId: body.connectionId,
+    });
+
+    return { ok: true, runId, status: 'resuming' };
+  }
+
   @Delete(':agentId')
   @UseGuards(ApiKeyGuard)
   async deleteAgent(@CurrentWorkspace() workspace: any, @Param('agentId') agentId: string) {

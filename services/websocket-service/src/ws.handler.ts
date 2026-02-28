@@ -9,6 +9,8 @@ import type {
   AgentRunStepCompletedEvent,
   AgentRunSucceededEvent,
   AgentRunFailedEvent,
+  AgentRunPausedEvent,
+  AgentRunResumedEvent,
   OrgCreatedEvent,
   ConnectionEndpointConfiguredEvent,
   RagConfiguredEvent,
@@ -116,6 +118,39 @@ export class WsHandler implements OnModuleInit {
         this.wsService.sendToWorkspace(data.workspaceId, {
           type: 'agent_run_failed',
           payload: { agentId: data.agentId, runId: data.runId, error: data.error },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunPausedEvent>(
+      SUBJECTS.RUNTIME_RUN_PAUSED,
+      'ws-run-paused',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_run_paused',
+          payload: {
+            agentId: data.agentId,
+            runId: data.runId,
+            reason: data.reason,
+            integrationKey: data.integrationKey,
+            actionName: data.actionName,
+            pausedAt: data.pausedAt,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunResumedEvent>(
+      SUBJECTS.RUNTIME_RUN_RESUMED,
+      'ws-run-resumed',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_run_resumed',
+          payload: {
+            agentId: data.agentId,
+            runId: data.runId,
+            resumedAt: data.resumedAt,
+          },
         });
       },
     );

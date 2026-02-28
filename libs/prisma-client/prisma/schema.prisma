@@ -36,6 +36,7 @@ model Workspace {
   connectionRefs          ConnectionRef[]
   agentDefinitions        AgentDefinition[]
   availableIntegrations   AvailableIntegration[]
+  toolRegistryEntries     ToolRegistryEntry[]
 
   @@index([apiKey])
   @@index([orgId])
@@ -91,6 +92,7 @@ model ConnectionRef {
   workspaceId   String
   provider      String
   externalRefId String
+  endUserId     String?
   status        ConnectionStatus @default(PENDING)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
@@ -99,6 +101,7 @@ model ConnectionRef {
 
   @@unique([workspaceId, provider, externalRefId])
   @@index([workspaceId, provider])
+  @@index([workspaceId, endUserId])
 }
 
 enum AgentStatus {
@@ -135,24 +138,52 @@ model AgentDefinition {
 enum RunStatus {
   PENDING
   RUNNING
+  PAUSED
   SUCCEEDED
   FAILED
   CANCELLED
 }
 
 model AgentRun {
-  id             String    @id @default(uuid())
-  agentId        String
-  startedAt      DateTime?
-  endedAt        DateTime?
-  status         RunStatus @default(PENDING)
-  stepsCompleted Int       @default(0)
-  logsPointer    String?
-  errorMessage   String?
-  createdAt      DateTime  @default(now())
+  id                String    @id @default(uuid())
+  agentId           String
+  startedAt         DateTime?
+  endedAt           DateTime?
+  status            RunStatus @default(PENDING)
+  stepsCompleted    Int       @default(0)
+  logsPointer       String?
+  errorMessage      String?
+  endUserConnectionId String?
+  pausedAt          DateTime?
+  pausedAtStepIndex Int?
+  pauseReason       String?
+  pauseMetadata     Json?
+  resumedAt         DateTime?
+  createdAt         DateTime  @default(now())
 
   agent AgentDefinition @relation(fields: [agentId], references: [id])
 
   @@index([agentId, createdAt(sort: Desc)])
   @@index([status])
+}
+
+model ToolRegistryEntry {
+  id                  String              @id @default(uuid())
+  workspaceId         String
+  integrationProvider IntegrationProvider
+  integrationKey      String
+  actionName          String
+  displayName         String
+  description         String?
+  inputSchema         Json?
+  outputSchema        Json?
+  rawDefinition       Json?
+  syncedAt            DateTime            @default(now())
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, integrationProvider, actionName])
+  @@index([workspaceId, integrationKey])
 }

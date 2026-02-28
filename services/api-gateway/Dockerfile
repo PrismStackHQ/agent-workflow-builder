@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY libs/ ./libs/
 COPY services/api-gateway/package.json ./services/api-gateway/
-RUN npm ci --workspace=@agent-workflow/shared-types --workspace=@agent-workflow/nats-client --workspace=@agent-workflow/prisma-client --workspace=@agent-workflow/auth --workspace=@agent-workflow/observability --workspace=@agent-workflow/api-gateway 2>/dev/null || npm install
+RUN npm ci --workspace=@agent-workflow/shared-types --workspace=@agent-workflow/nats-client --workspace=@agent-workflow/prisma-client --workspace=@agent-workflow/auth --workspace=@agent-workflow/observability --workspace=@agent-workflow/integration-provider --workspace=@agent-workflow/api-gateway 2>/dev/null || npm install
 
 FROM base AS build
 COPY services/api-gateway/ ./services/api-gateway/
@@ -17,7 +17,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/services/api-gateway/dist ./dist
 COPY --from=build /app/libs/prisma-client/prisma ./prisma
 RUN mkdir -p node_modules/@agent-workflow && \
-    for lib in shared-types nats-client prisma-client auth observability; do \
+    for lib in shared-types nats-client prisma-client auth observability integration-provider; do \
       rm -rf node_modules/@agent-workflow/$lib && \
       ln -sf /app/dist/libs/$lib/src node_modules/@agent-workflow/$lib; \
     done

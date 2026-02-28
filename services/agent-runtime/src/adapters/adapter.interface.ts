@@ -2,8 +2,10 @@ import type { TokenResponse } from '@agent-workflow/shared-types';
 
 export interface StepContext {
   orgId: string;
+  workspaceId: string;
   agentId: string;
   runId: string;
+  endUserConnectionId: string;
   tokens: Map<string, TokenResponse>;
   previousResults: unknown[];
 }

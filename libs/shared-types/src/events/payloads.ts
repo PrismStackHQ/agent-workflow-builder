@@ -154,3 +154,48 @@ export interface AgentRunFailedEvent {
   endedAt: string;
   error: string;
 }
+
+export interface AgentRunPausedEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  pausedAtStepIndex: number;
+  reason: string;
+  integrationKey: string;
+  actionName: string;
+  connectionId?: string;
+  pausedAt: string;
+}
+
+export interface AgentRunResumeRequestedEvent {
+  orgId: string;
+  workspaceId: string;
+  runId: string;
+  connectionId: string;
+}
+
+export interface AgentRunResumedEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  resumedAt: string;
+}
+
+// Tool registry events
+export interface ToolRegistrySyncedEvent {
+  orgId: string;
+  workspaceId: string;
+  toolCount: number;
+  syncedAt: string;
+}
+
+// Connection completion (end-user OAuth)
+export interface ConnectionCompletedEvent {
+  orgId: string;
+  workspaceId: string;
+  integrationKey: string;
+  connectionId: string;
+  endUserId: string;
+}

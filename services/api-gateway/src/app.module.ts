@@ -7,6 +7,7 @@ import { RagModule } from './rag/rag.module';
 import { AgentsModule } from './agents/agents.module';
 import { AuthGatewayModule } from './auth/auth.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
+import { ToolsModule } from './tools/tools.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -21,6 +22,7 @@ import { HealthController } from './health/health.controller';
     AgentsModule,
     AuthGatewayModule,
     WorkspacesModule,
+    ToolsModule,
   ],
   controllers: [HealthController],
 })

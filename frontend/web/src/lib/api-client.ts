@@ -209,6 +209,55 @@ class ApiClient {
     });
     return res.json();
   }
+
+  // Tool registry endpoints
+  async listTools(integrationKey?: string) {
+    const params = integrationKey ? `?integrationKey=${encodeURIComponent(integrationKey)}` : '';
+    const res = await fetch(`${API_BASE}/tools${params}`, { headers: this.headers() });
+    return res.json();
+  }
+
+  async syncTools() {
+    const res = await fetch(`${API_BASE}/tools/sync`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    return res.json();
+  }
+
+  async getToolByAction(actionName: string) {
+    const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(actionName)}`, { headers: this.headers() });
+    return res.json();
+  }
+
+  // Connection check endpoints
+  async checkConnection(integrationKey: string, connectionId: string) {
+    const res = await fetch(`${API_BASE}/connections/check`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ integrationKey, connectionId }),
+    });
+    return res.json();
+  }
+
+  async connectionComplete(integrationKey: string, connectionId: string, endUserId: string) {
+    const res = await fetch(`${API_BASE}/connections/complete`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ integrationKey, connectionId, endUserId }),
+    });
+    return res.json();
+  }
+
+  // Run resume
+  async resumeRun(agentId: string, runId: string, connectionId: string) {
+    const res = await fetch(`${API_BASE}/agents/${agentId}/runs/${runId}/resume`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ connectionId }),
+    });
+    return res.json();
+  }
 }
 
 export const apiClient = new ApiClient();
