@@ -54,6 +54,7 @@ function RecentRunRow({ run, agents }: { run: any; agents: any[] }) {
   const statusColors: Record<string, string> = {
     SUCCEEDED: 'bg-green-100 text-green-700',
     RUNNING: 'bg-blue-100 text-blue-700',
+    PAUSED: 'bg-amber-100 text-amber-700',
     FAILED: 'bg-red-100 text-red-700',
     PENDING: 'bg-gray-100 text-gray-600',
   };
@@ -69,22 +70,6 @@ function RecentRunRow({ run, agents }: { run: any; agents: any[] }) {
         {run.status}
       </span>
     </div>
-  );
-}
-
-function SuggestionCard({ title, description, href }: {
-  title: string; description: string; href: string;
-}) {
-  return (
-    <Link href={href} className="block group">
-      <Card className="hover:border-indigo-200 hover:shadow-indigo-100/50 transition-all duration-150">
-        <CardContent>
-          <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 mb-1">{title}</p>
-          <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
-          <p className="text-xs text-indigo-600 font-medium mt-2 group-hover:underline">Try it →</p>
-        </CardContent>
-      </Card>
-    </Link>
   );
 }
 
@@ -128,20 +113,20 @@ export default function DashboardPage() {
 
   const wizardSteps = [
     {
-      label: 'Create your first agent',
-      description: 'Define an automation with natural language.',
+      label: 'Integrate the SDK',
+      description: 'Install @agent-workflow/sdk and create your first agent programmatically.',
       done: agents.length > 0,
-      href: '/agents/new',
+      href: '/agents',
     },
     {
       label: 'Connect a service',
-      description: 'Link Gmail, Google Drive, Slack, or Notion.',
+      description: 'Link Gmail, Google Drive, Slack, or Notion via your integration provider.',
       done: connections.length > 0,
       href: '/connections',
     },
     {
       label: 'Watch an agent run',
-      description: 'See your agent execute and produce results.',
+      description: 'Trigger a run via the SDK and monitor results here.',
       done: allRuns.some((r) => r.status === 'SUCCEEDED'),
       href: '/agents',
     },
@@ -216,12 +201,12 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600 leading-relaxed">
-              Agent Workflow lets you describe automations in plain English.
-              Our AI translates your instructions into scheduled jobs that
-              connect your services — Gmail, Drive, Slack, and more.
+              Agent Workflow is middleware that orchestrates AI agent workflows
+              across integration providers. Use the SDK to create agents,
+              trigger runs, and manage connections programmatically.
             </p>
-            <Link href="/agents/new" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:underline">
-              Read more →
+            <Link href="/agents" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:underline">
+              View agents →
             </Link>
           </CardContent>
         </Card>
@@ -232,10 +217,10 @@ export default function DashboardPage() {
           <CardContent>
             <ol className="text-sm text-gray-600 space-y-2 list-none">
               {[
-                'Go to Create Agent and type your workflow in natural language.',
-                'Authorize any services the agent needs (OAuth).',
-                'The agent is automatically scheduled and runs on your cron.',
-                'Check Agents to see run history and status.',
+                'Install the SDK: npm install @agent-workflow/sdk',
+                'Create an agent with steps using client.agents.create().',
+                'Trigger a run with client.runs.trigger(agentId).',
+                'Monitor runs here or subscribe to real-time events via WebSocket.',
               ].map((step, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-indigo-600 font-bold shrink-0">{i + 1}.</span>
@@ -261,11 +246,7 @@ export default function DashboardPage() {
           <Card>
             <CardContent>
               <p className="text-sm text-gray-500 py-4 text-center">
-                No agent runs yet.{' '}
-                <Link href="/agents/new" className="text-indigo-600 font-medium hover:underline">
-                  Create your first agent
-                </Link>{' '}
-                to get started.
+                No agent runs yet. Use the SDK to create agents and trigger runs.
               </p>
             </CardContent>
           </Card>
@@ -280,20 +261,28 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Suggested for you */}
+      {/* Resources */}
       <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Suggested for you</h2>
+        <h2 className="text-base font-semibold text-gray-900 mb-3">Resources</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SuggestionCard
-            title="Schedule a daily email digest"
-            description='Try: "Read my unread emails every morning at 8am and summarize them."'
-            href="/agents/new"
-          />
-          <SuggestionCard
-            title="Auto-file receipts to Drive"
-            description='Try: "Find emails with PDF attachments weekly and save to a Receipts folder."'
-            href="/agents/new"
-          />
+          <Link href="/tools" className="block group">
+            <Card className="hover:border-indigo-200 hover:shadow-indigo-100/50 transition-all duration-150">
+              <CardContent>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 mb-1">Tool Registry</p>
+                <p className="text-xs text-gray-500 leading-relaxed">Browse and sync available tools from your integration provider.</p>
+                <p className="text-xs text-indigo-600 font-medium mt-2 group-hover:underline">View tools →</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/connections" className="block group">
+            <Card className="hover:border-indigo-200 hover:shadow-indigo-100/50 transition-all duration-150">
+              <CardContent>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 mb-1">Connections</p>
+                <p className="text-xs text-gray-500 leading-relaxed">Manage end-user connections and integration authorizations.</p>
+                <p className="text-xs text-indigo-600 font-medium mt-2 group-hover:underline">Manage →</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
     </div>

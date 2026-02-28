@@ -116,6 +116,7 @@ export interface AgentRunTriggeredEvent {
   workspaceId: string;
   agentId: string;
   runId: string;
+  endUserConnectionId?: string;
 }
 
 // Runtime events

@@ -74,6 +74,13 @@ class WsClient {
     });
   }
 
+  sendConnectionCompleted(integrationKey: string, connectionId: string, endUserId: string) {
+    this.send({
+      type: 'connection_completed',
+      payload: { integrationKey, connectionId, endUserId },
+    });
+  }
+
   private scheduleReconnect() {
     if (this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {

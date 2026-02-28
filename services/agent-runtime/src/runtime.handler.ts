@@ -27,7 +27,7 @@ export class RuntimeHandler implements OnModuleInit {
       async (data) => {
         this.logger.log(`Run triggered for agent ${data.agentId}, workspace ${data.workspaceId}`);
         try {
-          await this.runtime.executeRun(data.agentId, data.orgId, data.workspaceId);
+          await this.runtime.executeRun(data.agentId, data.orgId, data.workspaceId, data.endUserConnectionId);
         } catch (err) {
           this.logger.error(`Run execution failed: ${err}`);
         }

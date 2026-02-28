@@ -39,6 +39,44 @@ export class AgentsController {
     return { commandId, status: 'processing' };
   }
 
+  @Post()
+  @UseGuards(ApiKeyGuard)
+  async createAgent(
+    @CurrentWorkspace() workspace: any,
+    @Body() body: {
+      name: string;
+      triggerType: string;
+      scheduleCron?: string;
+      steps: { index: number; action: string; connector: string; params: Record<string, unknown> }[];
+    },
+  ) {
+    const agent = await this.prisma.agentDefinition.create({
+      data: {
+        workspaceId: workspace.id,
+        name: body.name,
+        naturalLanguageCommand: `[SDK] ${body.name}`,
+        triggerType: body.triggerType,
+        scheduleCron: body.scheduleCron || null,
+        steps: body.steps as any,
+        requiredConnections: [...new Set(body.steps.map((s) => s.connector))] as any,
+        status: 'READY',
+      },
+    });
+
+    await this.nats.publish(SUBJECTS.AGENT_DEFINITION_CREATED, {
+      orgId: workspace.orgId,
+      workspaceId: workspace.id,
+      agentId: agent.id,
+      name: agent.name,
+      scheduleCron: agent.scheduleCron,
+      requiredConnections: JSON.parse(JSON.stringify(agent.requiredConnections)),
+      steps: JSON.parse(JSON.stringify(agent.steps)),
+      status: agent.status,
+    });
+
+    return agent;
+  }
+
   @Get()
   @UseGuards(ApiKeyGuard)
   async listAgents(@CurrentWorkspace() workspace: any) {
@@ -79,6 +117,37 @@ export class AgentsController {
     });
     if (!run) throw new NotFoundException('Run not found');
     return run;
+  }
+
+  @Post(':agentId/runs')
+  @UseGuards(ApiKeyGuard)
+  async triggerRun(
+    @CurrentWorkspace() workspace: any,
+    @Param('agentId') agentId: string,
+    @Body() body: { endUserConnectionId?: string },
+  ) {
+    const agent = await this.prisma.agentDefinition.findFirst({
+      where: { id: agentId, workspaceId: workspace.id },
+    });
+    if (!agent) throw new NotFoundException('Agent not found');
+
+    const run = await this.prisma.agentRun.create({
+      data: {
+        agentId: agent.id,
+        status: 'PENDING',
+        endUserConnectionId: body.endUserConnectionId || null,
+      },
+    });
+
+    await this.nats.publish(SUBJECTS.SCHEDULER_RUN_TRIGGERED, {
+      orgId: workspace.orgId,
+      workspaceId: workspace.id,
+      agentId: agent.id,
+      runId: run.id,
+      endUserConnectionId: body.endUserConnectionId,
+    });
+
+    return { runId: run.id, status: 'running' };
   }
 
   @Post(':agentId/runs/:runId/resume')
