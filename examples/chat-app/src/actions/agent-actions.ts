@@ -6,6 +6,7 @@ function getClient() {
   return new AgentWorkflowClient({
     apiKey: process.env.AGENT_WORKFLOW_API_KEY || '',
     baseUrl: process.env.AGENT_WORKFLOW_API_URL || 'http://localhost:3001/api/v1',
+    endUserId: process.env.END_USER_ID,
   });
 }
 
@@ -49,7 +50,7 @@ export async function checkConnection(integrationKey: string, connectionId: stri
   return client.connections.check(integrationKey, connectionId);
 }
 
-export async function completeConnection(integrationKey: string, connectionId: string, endUserId: string) {
+export async function completeConnection(integrationKey: string, connectionId: string, endUserId?: string) {
   const client = getClient();
   return client.connections.complete(integrationKey, connectionId, endUserId);
 }

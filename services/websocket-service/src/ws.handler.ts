@@ -37,6 +37,7 @@ export class WsHandler implements OnModuleInit {
             agentDraftId: data.agentDraftId,
             provider: data.provider,
             connectionRefId: data.connectionRefId,
+            endUserId: data.endUserId,
           },
         });
       },

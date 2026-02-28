@@ -1,110 +1,163 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '@agent-workflow/prisma-client';
 import type { AgentStep } from '@agent-workflow/shared-types';
 
-interface WorkflowTemplate {
-  name: string;
-  matchKeywords: string[];
-  requiredConnectors: string[];
-  steps: AgentStep[];
-}
+// Maps generic action concepts to search terms for finding real actions in the registry
+const ACTION_CONCEPT_KEYWORDS: Record<string, string[]> = {
+  read: ['list', 'read', 'get', 'fetch', 'search', 'find'],
+  send: ['send', 'post', 'create', 'write', 'push', 'publish'],
+  upload: ['upload', 'create', 'write', 'save', 'put'],
+  download: ['download', 'get', 'read', 'fetch', 'export'],
+  search: ['search', 'find', 'list', 'query', 'lookup'],
+  delete: ['delete', 'remove', 'trash'],
+  update: ['update', 'edit', 'modify', 'patch'],
+  summarize: ['summary', 'summarize', 'digest'],
+  filter: ['filter', 'search', 'find', 'list'],
+};
 
 @Injectable()
 export class TemplateMatcherService {
   private readonly logger = new Logger(TemplateMatcherService.name);
 
-  private readonly templates: WorkflowTemplate[] = [
-    {
-      name: 'email-receipts-to-drive',
-      matchKeywords: ['receipt', 'email', 'drive', 'upload'],
-      requiredConnectors: ['gmail', 'gdrive'],
-      steps: [
-        {
-          index: 0,
-          action: 'read_emails',
-          connector: 'gmail',
-          params: { query: 'subject:receipt OR subject:order OR subject:invoice', maxResults: 50 },
-        },
-        {
-          index: 1,
-          action: 'filter_receipts',
-          connector: 'gmail',
-          params: { filterType: 'receipt_detection' },
-        },
-        {
-          index: 2,
-          action: 'upload_files',
-          connector: 'gdrive',
-          params: { folder: 'Receipts', createFolder: true },
-        },
-      ],
-    },
-    {
-      name: 'email-summary-to-slack',
-      matchKeywords: ['email', 'summary', 'slack'],
-      requiredConnectors: ['gmail', 'slack'],
-      steps: [
-        {
-          index: 0,
-          action: 'read_emails',
-          connector: 'gmail',
-          params: { query: 'is:unread', maxResults: 20 },
-        },
-        {
-          index: 1,
-          action: 'summarize',
-          connector: 'gmail',
-          params: { format: 'bullet_points' },
-        },
-        {
-          index: 2,
-          action: 'send_message',
-          connector: 'slack',
-          params: { channel: '#email-summary' },
-        },
-      ],
-    },
-    {
-      name: 'generic-email-read',
-      matchKeywords: ['email', 'read', 'mail'],
-      requiredConnectors: ['gmail'],
-      steps: [
-        {
-          index: 0,
-          action: 'read_emails',
-          connector: 'gmail',
-          params: { query: 'is:unread', maxResults: 50 },
-        },
-      ],
-    },
-  ];
+  constructor(private readonly prisma: PrismaService) {}
 
-  matchSteps(command: string, connectors: string[]): AgentStep[] {
-    // Score each template by keyword matches
-    let bestMatch: WorkflowTemplate | null = null;
-    let bestScore = 0;
+  async matchSteps(
+    command: string,
+    connectors: string[],
+    workspaceId: string,
+  ): Promise<AgentStep[]> {
+    if (connectors.length === 0) {
+      this.logger.log('No connectors provided, returning empty steps');
+      return [];
+    }
 
-    for (const template of this.templates) {
-      const score = template.matchKeywords.filter((kw) => command.includes(kw)).length;
-      const connectorMatch = template.requiredConnectors.every((c) => connectors.includes(c));
+    // Fetch all available actions for the matched connectors from the tool registry
+    const registryTools = await this.prisma.toolRegistryEntry.findMany({
+      where: {
+        workspaceId,
+        integrationKey: { in: connectors },
+      },
+      select: {
+        integrationKey: true,
+        actionName: true,
+        displayName: true,
+        description: true,
+      },
+    });
 
-      if (score > bestScore && connectorMatch) {
-        bestScore = score;
-        bestMatch = template;
+    if (registryTools.length === 0) {
+      this.logger.log('No tools found in registry for connectors, generating generic steps');
+      return connectors.map((connector, index) => ({
+        index,
+        action: 'generic_action',
+        connector,
+        params: { command },
+      }));
+    }
+
+    // Group tools by connector
+    const toolsByConnector = new Map<
+      string,
+      Array<{ actionName: string; displayName: string; description: string | null }>
+    >();
+    for (const tool of registryTools) {
+      const list = toolsByConnector.get(tool.integrationKey) || [];
+      list.push(tool);
+      toolsByConnector.set(tool.integrationKey, list);
+    }
+
+    // Extract action intent from the command and match to real actions
+    const steps: AgentStep[] = [];
+    let stepIndex = 0;
+
+    for (const connector of connectors) {
+      const available = toolsByConnector.get(connector);
+      if (!available || available.length === 0) continue;
+
+      const bestAction = this.findBestAction(command, available);
+
+      if (bestAction) {
+        steps.push({
+          index: stepIndex++,
+          action: bestAction.actionName,
+          connector,
+          params: { command },
+        });
+        this.logger.log(
+          `Matched action: ${bestAction.actionName} (${bestAction.displayName}) for connector ${connector}`,
+        );
+      } else {
+        // Use the first available action as a fallback
+        steps.push({
+          index: stepIndex++,
+          action: available[0].actionName,
+          connector,
+          params: { command },
+        });
+        this.logger.log(
+          `No strong match for connector ${connector}, using default: ${available[0].actionName}`,
+        );
       }
     }
 
-    if (bestMatch) {
-      this.logger.log(`Matched template: ${bestMatch.name} (score: ${bestScore})`);
-      return bestMatch.steps;
+    return steps;
+  }
+
+  /**
+   * Scores each available action against the user's command to find the best match.
+   * Uses action name, display name, and description for matching.
+   */
+  private findBestAction(
+    command: string,
+    actions: Array<{ actionName: string; displayName: string; description: string | null }>,
+  ): { actionName: string; displayName: string } | null {
+    let bestAction: { actionName: string; displayName: string } | null = null;
+    let bestScore = 0;
+
+    // Determine which action concepts appear in the command
+    const activeConceptKeywords: string[] = [];
+    for (const [concept, keywords] of Object.entries(ACTION_CONCEPT_KEYWORDS)) {
+      if (command.includes(concept)) {
+        activeConceptKeywords.push(...keywords);
+      }
     }
 
-    // Fallback: generate generic steps from connectors
-    this.logger.log('No template match, generating generic steps');
-    return connectors.map((connector, index) => ({
-      index,
-      action: 'generic_action',
-      connector,
-      params: { command },
-    }));
+    for (const action of actions) {
+      let score = 0;
+
+      const actionLower = action.actionName.toLowerCase();
+      const displayLower = action.displayName.toLowerCase();
+      const descLower = (action.description || '').toLowerCase();
+      const searchable = `${actionLower} ${displayLower} ${descLower}`;
+
+      // Score: concept keywords match action metadata
+      for (const keyword of activeConceptKeywords) {
+        if (searchable.includes(keyword)) {
+          score += 2;
+        }
+      }
+
+      // Score: command words appear in action display name or description
+      const commandWords = command.split(/\s+/).filter((w) => w.length >= 3);
+      for (const word of commandWords) {
+        if (displayLower.includes(word)) score += 3;
+        if (descLower.includes(word)) score += 1;
+      }
+
+      // Score: action name segments match command
+      const actionSegments = actionLower.split(/[-_]/);
+      for (const segment of actionSegments) {
+        if (segment.length >= 3 && command.includes(segment)) {
+          score += 2;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestAction = action;
+      }
+    }
+
+    return bestScore >= 2 ? bestAction : null;
   }
 }

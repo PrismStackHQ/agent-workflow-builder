@@ -97,7 +97,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
     });
   }
 
-  private async handleAgentCommand(client: AuthenticatedSocket, payload: { naturalLanguageCommand: string }) {
+  private async handleAgentCommand(client: AuthenticatedSocket, payload: { naturalLanguageCommand: string; endUserId?: string }) {
     if (!client.workspaceId) {
       this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
       return;
@@ -111,6 +111,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       workspaceId: client.workspaceId,
       commandId,
       naturalLanguageCommand: payload.naturalLanguageCommand,
+      endUserId: payload.endUserId,
     });
 
     this.send(client, {

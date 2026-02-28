@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { wsClient } from '@/lib/ws';
 import type { ChatMessage, ChatStep, WsServerMessage } from '@/lib/types';
-import { submitCommand } from '@/actions/agent-actions';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 11);
@@ -154,6 +153,7 @@ export function useAgentChat() {
               agentDraftId: p.agentDraftId as string,
               connected: false,
               tools: [],
+              endUserId: (p.endUserId as string) || process.env.NEXT_PUBLIC_END_USER_ID || '',
             },
           });
           break;
@@ -241,6 +241,7 @@ export function useAgentChat() {
               agentDraftId: '',
               connected: false,
               tools: [p.actionName as string].filter(Boolean),
+              endUserId: (p.endUserId as string) || process.env.NEXT_PUBLIC_END_USER_ID || '',
             },
             steps: [
               {
@@ -299,19 +300,39 @@ export function useAgentChat() {
       });
 
       // Submit via WebSocket for real-time flow
-      wsClient.submitCommand(content);
+      const endUserId = process.env.NEXT_PUBLIC_END_USER_ID;
+      wsClient.submitCommand(content, endUserId);
     },
     [addMessage],
   );
 
   const handleOAuthComplete = useCallback(
-    (connectionRefId: string, provider: string) => {
-      wsClient.sendOAuthComplete(connectionRefId, provider);
+    async (provider: string, endUserId: string, nangoConnectionId: string) => {
+      // Register the completed connection with our platform via REST API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || '';
+
+      try {
+        await fetch(`${apiUrl}/connections/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            integrationKey: provider,
+            connectionId: nangoConnectionId,
+            endUserId,
+          }),
+        });
+      } catch (err) {
+        console.error('Failed to register connection:', err);
+      }
 
       // Update the connection card in messages
       setMessages((prev) =>
         prev.map((msg) => {
-          if (msg.connectionCard?.connectionRefId === connectionRefId) {
+          if (msg.connectionCard?.provider === provider && !msg.connectionCard?.connected) {
             return {
               ...msg,
               status: 'complete' as const,

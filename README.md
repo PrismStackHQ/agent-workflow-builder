@@ -311,27 +311,29 @@ curl -X PUT http://localhost:3001/api/v1/config/connection-endpoint \
   -d '{"connectionEndpointUrl": "https://your-oauth-server.com", "connectionEndpointApiKey": "secret"}'
 ```
 
-### 3. Add connection references and mark ready
+### 3. Register end-user connections (after Nango OAuth)
 
 ```bash
-# Add Gmail connection
-curl -X POST http://localhost:3001/api/v1/connections \
+# Register Gmail connection for end user
+curl -X POST http://localhost:3001/api/v1/connections/complete \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"provider": "gmail", "externalRefId": "gmail-ref-001"}'
+  -d '{
+    "integrationKey": "google-mail",
+    "connectionId": "nango-conn-gmail-001",
+    "endUserId": "user-123",
+    "metadata": {"connectedAt": "2025-01-01"}
+  }'
 
-# Add GDrive connection
-curl -X POST http://localhost:3001/api/v1/connections \
+# Register GDrive connection for the same end user
+curl -X POST http://localhost:3001/api/v1/connections/complete \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"provider": "gdrive", "externalRefId": "gdrive-ref-001"}'
-
-# Mark both as ready (simulating OAuth completion)
-curl -X PATCH http://localhost:3001/api/v1/connections/GMAIL_REF_ID/ready \
-  -H "X-API-Key: YOUR_API_KEY"
-
-curl -X PATCH http://localhost:3001/api/v1/connections/GDRIVE_REF_ID/ready \
-  -H "X-API-Key: YOUR_API_KEY"
+  -d '{
+    "integrationKey": "google-drive",
+    "connectionId": "nango-conn-gdrive-001",
+    "endUserId": "user-123"
+  }'
 ```
 
 ### 4. Create an agent via natural language
@@ -340,7 +342,10 @@ curl -X PATCH http://localhost:3001/api/v1/connections/GDRIVE_REF_ID/ready \
 curl -X POST http://localhost:3001/api/v1/agents/command \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"naturalLanguageCommand": "Create a task to run every day where read emails from my gmail and find the receipts and upload to the gdrive"}'
+  -d '{
+    "naturalLanguageCommand": "Find emails with invoices from my gmail and upload them to gdrive",
+    "endUserId": "user-123"
+  }'
 ```
 
 ### 5. View agents and runs
@@ -355,6 +360,130 @@ curl http://localhost:3001/api/v1/agents/AGENT_ID/runs -H "X-API-Key: YOUR_API_K
 
 ---
 
+## Node.js SDK
+
+The `@agent-workflow/sdk` package (`packages/sdk/`) provides a typed client for the platform.
+
+```typescript
+import { AgentWorkflowClient } from '@agent-workflow/sdk';
+
+const client = new AgentWorkflowClient({
+  apiKey: 'your-api-key',
+  baseUrl: 'http://localhost:3001/api/v1',
+  wsUrl: 'ws://localhost:3002/ws',
+});
+
+// Create an agent via natural language (LLM-powered planner)
+const { commandId } = await client.agents.submitCommand(
+  'find invoices from my gmail and upload to gdrive',
+  'end-user-123', // optional: Organisation's internal user ID
+);
+
+// Or create an agent with explicit steps
+const agent = await client.agents.create({
+  name: 'Invoice Processor',
+  triggerType: 'cron',
+  scheduleCron: '0 8 * * *',
+  steps: [
+    { index: 0, action: 'EMAILS-LIST', connector: 'google-mail', params: { query: 'invoice' } },
+    { index: 1, action: 'UPLOAD-FILE', connector: 'google-drive', params: {} },
+  ],
+});
+
+// Register an end-user connection (after Nango OAuth)
+await client.connections.complete(
+  'google-mail',       // integrationKey
+  'nango-conn-abc',    // Nango connectionId
+  'end-user-123',      // Organisation's internal user ID
+  { source: 'onboarding' }, // optional metadata
+);
+
+// Real-time events
+await client.connect();
+client.on('agent:created', (e) => console.log('Agent created:', e.name));
+client.on('run:started', (e) => console.log('Run started:', e.runId));
+client.on('run:paused', (e) => console.log('Run paused, needs:', e.integrationKey));
+client.on('run:succeeded', (e) => console.log('Done:', e.summary));
+```
+
+Build the SDK:
+
+```bash
+cd packages/sdk && npx tsc
+```
+
+---
+
+## Example: Chat App
+
+A standalone Next.js chat application (`examples/chat-app/`) that demonstrates the full agentic workflow with a real-time chat UI.
+
+Features:
+- Real-time WebSocket events (agent creation, step progress, pauses, completions)
+- OAuth connection cards with connect/resume flow
+- Tool execution results with syntax-highlighted JSON
+- Animated thinking indicators and step progress
+- Chat history sidebar with connection status
+
+### Running the Chat App
+
+**Prerequisites:** The platform services must be running (via Docker Compose or individually).
+
+```bash
+# 1. Navigate to the chat app
+cd examples/chat-app
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure environment
+cp .env.local.example .env.local
+# Edit .env.local and set your workspace API key:
+#   AGENT_WORKFLOW_API_KEY=your-workspace-api-key
+#   NEXT_PUBLIC_API_KEY=your-workspace-api-key
+
+# 4. Build the SDK (required — the chat app depends on it)
+cd ../../packages/sdk && npx tsc && cd ../../examples/chat-app
+
+# 5. Start the dev server
+npm run dev
+```
+
+The chat app runs on **http://localhost:3100**.
+
+| Variable | Description |
+|----------|-------------|
+| `AGENT_WORKFLOW_API_KEY` | Workspace API key (server-side SDK calls) |
+| `AGENT_WORKFLOW_API_URL` | Platform API URL (default: `http://localhost:3001/api/v1`) |
+| `AGENT_WORKFLOW_WS_URL` | Platform WebSocket URL (default: `ws://localhost:3002/ws`) |
+| `NEXT_PUBLIC_WS_URL` | WebSocket URL for browser (default: `ws://localhost:3002/ws`) |
+| `NEXT_PUBLIC_API_KEY` | API key for browser WebSocket auth |
+
+---
+
+## LLM-Powered Agent Planner
+
+When `OPENAI_API_KEY` is set, the agent-builder uses an LLM-powered planner (GPT-4o via Vercel AI SDK) instead of regex-based template matching. The planner dynamically discovers available integrations and actions from the tool registry to build execution plans.
+
+**How it works:**
+
+1. User submits a natural language command
+2. LLM calls `list_integrations` to discover available connectors
+3. LLM calls `search_tools` to find actions for each relevant connector
+4. LLM calls `check_connection` to verify the end user's connections
+5. LLM calls `submit_plan` with a structured execution plan
+6. Plan is validated against the tool registry and passed to the assembler
+
+**Fallback:** If `OPENAI_API_KEY` is not set or the LLM call fails, the system falls back to the regex-based parser.
+
+Set the key in `.env`:
+
+```bash
+OPENAI_API_KEY=sk-your-key-here
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -365,16 +494,20 @@ Agent-Workflow-Claude/
 │   ├── prisma-client/           # Prisma schema + service
 │   ├── auth/                    # API key guard
 │   └── observability/           # OpenTelemetry + pino logger
+├── packages/
+│   └── sdk/                     # Node.js SDK (@agent-workflow/sdk)
 ├── services/                    # Backend microservices
 │   ├── api-gateway/             # REST API (port 3001)
 │   ├── onboarding-service/      # Org lifecycle
 │   ├── connection-registry/     # Connection endpoint management
 │   ├── rag-registry/            # RAG endpoint management
-│   ├── agent-builder/           # NL parsing + agent creation
+│   ├── agent-builder/           # LLM planner + agent creation
 │   ├── scheduler-service/       # K8s CronJob management
 │   ├── agent-runtime/           # Workflow step execution
 │   └── websocket-service/       # Real-time events (port 3002)
-├── frontend/web/                # Next.js app (port 3000)
+├── frontend/web/                # Next.js admin app (port 3000)
+├── examples/
+│   └── chat-app/                # Agentic chat UI example (port 3100)
 ├── deploy/
 │   ├── helm/                    # Helm umbrella chart
 │   └── k8s/                     # Kustomize manifests
@@ -384,12 +517,14 @@ Agent-Workflow-Claude/
 
 ## Tech Stack
 
-| Component     | Technology              |
-|---------------|-------------------------|
-| Frontend      | Next.js 15, Tailwind CSS |
-| Backend       | NestJS 10               |
-| Event Bus     | NATS JetStream          |
-| Database      | PostgreSQL 16 + Prisma  |
-| Auth          | API Key (MVP)           |
-| Orchestration | Kubernetes              |
-| Container     | Docker                  |
+| Component     | Technology                        |
+|---------------|-----------------------------------|
+| Frontend      | Next.js 15, Tailwind CSS          |
+| Backend       | NestJS 10                         |
+| LLM Planner   | OpenAI GPT-4o (Vercel AI SDK)    |
+| Event Bus     | NATS JetStream                    |
+| Database      | PostgreSQL 16 + Prisma            |
+| Auth          | API Key + Firebase (frontend)     |
+| SDK           | TypeScript (Node.js)              |
+| Orchestration | Kubernetes                        |
+| Container     | Docker                            |

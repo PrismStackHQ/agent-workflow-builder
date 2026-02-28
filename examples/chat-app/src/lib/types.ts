@@ -22,6 +22,7 @@ export interface ConnectionCardData {
   connected: boolean;
   userEmail?: string;
   tools?: string[];
+  endUserId?: string;
 }
 
 export interface ToolResultData {

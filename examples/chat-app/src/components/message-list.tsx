@@ -7,7 +7,7 @@ import { AgentMessage } from './agent-message';
 
 interface MessageListProps {
   messages: ChatMessage[];
-  onOAuthConnect: (connectionRefId: string, provider: string) => void;
+  onOAuthConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
 }
 
 export function MessageList({ messages, onOAuthConnect }: MessageListProps) {

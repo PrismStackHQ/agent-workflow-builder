@@ -8,7 +8,7 @@ import { ThinkingIndicator } from './thinking-indicator';
 
 interface AgentMessageProps {
   message: ChatMessage;
-  onOAuthConnect: (connectionRefId: string, provider: string) => void;
+  onOAuthConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
 }
 
 function formatElapsed(ms: number): string {

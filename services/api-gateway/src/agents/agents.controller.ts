@@ -25,7 +25,7 @@ export class AgentsController {
   @UseGuards(ApiKeyGuard)
   async submitCommand(
     @CurrentWorkspace() workspace: any,
-    @Body() body: { naturalLanguageCommand: string },
+    @Body() body: { naturalLanguageCommand: string; endUserId?: string },
   ) {
     const commandId = randomUUID();
 
@@ -34,6 +34,7 @@ export class AgentsController {
       workspaceId: workspace.id,
       commandId,
       naturalLanguageCommand: body.naturalLanguageCommand,
+      endUserId: body.endUserId,
     });
 
     return { commandId, status: 'processing' };

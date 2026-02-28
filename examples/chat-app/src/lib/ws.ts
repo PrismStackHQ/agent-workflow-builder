@@ -88,8 +88,8 @@ class BrowserWsClient {
     }
   }
 
-  submitCommand(command: string) {
-    this.send('agent_command_submit', { naturalLanguageCommand: command });
+  submitCommand(command: string, endUserId?: string) {
+    this.send('agent_command_submit', { naturalLanguageCommand: command, endUserId });
   }
 
   sendOAuthComplete(connectionRefId: string, provider: string) {

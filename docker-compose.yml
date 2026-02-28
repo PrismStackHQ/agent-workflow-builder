@@ -91,6 +91,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/agent_workflow
       NATS_URL: nats://nats:4222
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

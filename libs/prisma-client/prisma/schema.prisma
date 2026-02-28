@@ -88,20 +88,21 @@ enum ConnectionStatus {
 }
 
 model ConnectionRef {
-  id            String           @id @default(uuid())
-  workspaceId   String
-  provider      String
-  externalRefId String
-  endUserId     String?
-  status        ConnectionStatus @default(PENDING)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  workspaceId       String
+  provider          String
+  externalRefId     String
+  connectionId      String?
+  metadata          Json?
+  status            ConnectionStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 
   @@unique([workspaceId, provider, externalRefId])
   @@index([workspaceId, provider])
-  @@index([workspaceId, endUserId])
+  @@index([workspaceId, externalRefId])
 }
 
 enum AgentStatus {
@@ -118,6 +119,7 @@ model AgentDefinition {
   workspaceId            String
   name                   String
   naturalLanguageCommand String
+  endUserId              String?
   scheduleCron           String?
   triggerType            String      @default("cron")
   requiredConnections    Json        @default("[]")
@@ -132,6 +134,7 @@ model AgentDefinition {
   runs      AgentRun[]
 
   @@index([workspaceId])
+  @@index([workspaceId, endUserId])
   @@index([status])
 }
 

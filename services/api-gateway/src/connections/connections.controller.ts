@@ -198,8 +198,38 @@ export class ConnectionsController {
   @UseGuards(ApiKeyGuard)
   async connectionComplete(
     @CurrentWorkspace() workspace: any,
-    @Body() body: { integrationKey: string; connectionId: string; endUserId: string },
+    @Body()
+    body: {
+      integrationKey: string;
+      connectionId: string;
+      endUserId: string;
+      metadata?: Record<string, unknown>;
+    },
   ) {
+    // Upsert ConnectionRef: externalRefId = org's endUserId, connectionId = Nango's connectionId
+    await this.prisma.connectionRef.upsert({
+      where: {
+        workspaceId_provider_externalRefId: {
+          workspaceId: workspace.id,
+          provider: body.integrationKey,
+          externalRefId: body.endUserId,
+        },
+      },
+      update: {
+        connectionId: body.connectionId,
+        status: 'READY',
+        metadata: body.metadata as any || undefined,
+      },
+      create: {
+        workspaceId: workspace.id,
+        provider: body.integrationKey,
+        externalRefId: body.endUserId,
+        connectionId: body.connectionId,
+        status: 'READY',
+        metadata: body.metadata as any || undefined,
+      },
+    });
+
     await this.nats.publish(SUBJECTS.CONNECTION_COMPLETED, {
       orgId: workspace.orgId,
       workspaceId: workspace.id,

@@ -4,6 +4,7 @@ export interface ClientOptions {
   apiKey: string;
   baseUrl?: string;
   wsUrl?: string;
+  endUserId?: string;
 }
 
 // --- Agent types ---
@@ -14,6 +15,13 @@ export interface CreateAgentInput {
   scheduleCron?: string;
   steps: AgentStepInput[];
 }
+
+export interface CreateAgentNLInput {
+  command: string;
+  endUserId?: string;
+}
+
+export type CreateAgentRequest = CreateAgentInput | CreateAgentNLInput;
 
 export interface AgentStepInput {
   index: number;

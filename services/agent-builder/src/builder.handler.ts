@@ -5,9 +5,11 @@ import { SUBJECTS } from '@agent-workflow/shared-types';
 import type {
   AgentCommandSubmittedEvent,
   ConnectionOAuthCompletedEvent,
+  ConnectionCompletedEvent,
 } from '@agent-workflow/shared-types';
 import { NlParserService } from './builder/nl-parser.service';
 import { AgentAssemblerService } from './builder/agent-assembler.service';
+import { LlmPlannerService } from './builder/llm-planner.service';
 
 @Injectable()
 export class BuilderHandler implements OnModuleInit {
@@ -18,6 +20,7 @@ export class BuilderHandler implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly nlParser: NlParserService,
     private readonly assembler: AgentAssemblerService,
+    private readonly llmPlanner: LlmPlannerService,
   ) {}
 
   async onModuleInit() {
@@ -28,13 +31,29 @@ export class BuilderHandler implements OnModuleInit {
         this.logger.log(`Processing command ${data.commandId} for workspace ${data.workspaceId}`);
 
         try {
-          const intent = this.nlParser.parse(data.naturalLanguageCommand);
+          let intent;
+          try {
+            if (process.env.OPENAI_API_KEY) {
+              intent = await this.llmPlanner.plan(
+                data.workspaceId,
+                data.naturalLanguageCommand,
+                data.endUserId,
+              );
+            } else {
+              intent = await this.nlParser.parse(data.naturalLanguageCommand, data.workspaceId);
+            }
+          } catch (planErr) {
+            this.logger.warn(`LLM planner failed, falling back to regex: ${planErr}`);
+            intent = await this.nlParser.parse(data.naturalLanguageCommand, data.workspaceId);
+          }
+
           await this.assembler.assembleAgent(
             data.orgId,
             data.workspaceId,
             data.commandId,
             data.naturalLanguageCommand,
             intent,
+            data.endUserId,
           );
         } catch (err) {
           this.logger.error(`Failed to process command: ${err}`);
@@ -55,37 +74,60 @@ export class BuilderHandler implements OnModuleInit {
           });
         }
 
-        const waitingAgents = await this.prisma.agentDefinition.findMany({
-          where: { workspaceId: data.workspaceId, status: 'WAITING_CONNECTIONS' },
-        });
+        await this.checkWaitingAgents(data.orgId, data.workspaceId);
+      },
+    );
 
-        for (const agent of waitingAgents) {
-          const required = agent.requiredConnections as string[];
-          const ready = await this.prisma.connectionRef.findMany({
-            where: { workspaceId: data.workspaceId, provider: { in: required }, status: 'READY' },
-          });
-
-          const readyProviders = new Set(ready.map((r) => r.provider));
-          const allReady = required.every((p) => readyProviders.has(p));
-
-          if (allReady) {
-            await this.prisma.agentDefinition.update({
-              where: { id: agent.id },
-              data: { status: 'READY' },
-            });
-
-            await this.nats.publish(SUBJECTS.AGENT_DEFINITION_READY, {
-              orgId: data.orgId,
-              workspaceId: data.workspaceId,
-              agentId: agent.id,
-            });
-
-            this.logger.log(`Agent ${agent.id} is now READY`);
-          }
-        }
+    // Also listen for CONNECTION_COMPLETED (from REST API POST /connections/complete)
+    // This is the path used when the chat-app registers a Nango OAuth completion directly
+    await this.nats.subscribe<ConnectionCompletedEvent>(
+      SUBJECTS.CONNECTION_COMPLETED,
+      'agent-builder-connection-completed',
+      async (data) => {
+        this.logger.log(`Connection completed for workspace ${data.workspaceId}, provider ${data.integrationKey}, endUser ${data.endUserId}`);
+        await this.checkWaitingAgents(data.orgId, data.workspaceId);
       },
     );
 
     this.logger.log('Agent builder handler initialized');
+  }
+
+  private async checkWaitingAgents(orgId: string, workspaceId: string) {
+    const waitingAgents = await this.prisma.agentDefinition.findMany({
+      where: { workspaceId, status: 'WAITING_CONNECTIONS' },
+    });
+
+    for (const agent of waitingAgents) {
+      const required = agent.requiredConnections as string[];
+      const connectionWhere: Record<string, unknown> = {
+        workspaceId,
+        provider: { in: required },
+        status: 'READY',
+      };
+      if (agent.endUserId) {
+        connectionWhere.externalRefId = agent.endUserId;
+      }
+      const ready = await this.prisma.connectionRef.findMany({
+        where: connectionWhere,
+      });
+
+      const readyProviders = new Set(ready.map((r) => r.provider));
+      const allReady = required.every((p) => readyProviders.has(p));
+
+      if (allReady) {
+        await this.prisma.agentDefinition.update({
+          where: { id: agent.id },
+          data: { status: 'READY' },
+        });
+
+        await this.nats.publish(SUBJECTS.AGENT_DEFINITION_READY, {
+          orgId,
+          workspaceId,
+          agentId: agent.id,
+        });
+
+        this.logger.log(`Agent ${agent.id} is now READY`);
+      }
+    }
   }
 }

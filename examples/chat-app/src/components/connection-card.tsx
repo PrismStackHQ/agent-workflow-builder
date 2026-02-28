@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { ConnectionCardData } from '@/lib/types';
+import { triggerNangoAuth } from '@/lib/nango';
 
 const providerLogos: Record<string, string> = {
   gmail: 'https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png',
@@ -23,19 +24,29 @@ const providerDescriptions: Record<string, string> = {
 
 interface ConnectionCardProps {
   card: ConnectionCardData;
-  onConnect: (connectionRefId: string, provider: string) => void;
+  onConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
 }
 
 export function ConnectionCard({ card, onConnect }: ConnectionCardProps) {
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const logoUrl = card.logoUrl || providerLogos[card.provider];
   const description = card.description || providerDescriptions[card.provider] || `An integration with ${card.displayName}.`;
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setConnecting(true);
-    onConnect(card.connectionRefId, card.provider);
+    setError(null);
+    try {
+      const result = await triggerNangoAuth(card.provider, card.endUserId || '');
+      onConnect(card.provider, card.endUserId || '', result.connectionId);
+    } catch (err) {
+      setConnecting(false);
+      if (err instanceof Error && err.message !== 'Connection dialog closed') {
+        setError(err.message);
+      }
+    }
   };
 
   return (
@@ -92,6 +103,11 @@ export function ConnectionCard({ card, onConnect }: ConnectionCardProps) {
 
             {/* Description */}
             <p className="text-xs text-surface-500 mt-2 leading-relaxed">{description}</p>
+
+            {/* Error */}
+            {error && (
+              <p className="text-xs text-red-500 mt-2">{error}</p>
+            )}
 
             {/* Tools */}
             {card.tools && card.tools.length > 0 && (

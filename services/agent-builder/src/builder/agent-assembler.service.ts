@@ -19,9 +19,18 @@ export class AgentAssemblerService {
     commandId: string,
     command: string,
     intent: ParsedIntent,
+    endUserId?: string,
   ) {
+    const connectionWhere: Record<string, unknown> = {
+      workspaceId,
+      provider: { in: intent.connectors },
+      status: 'READY',
+    };
+    if (endUserId) {
+      connectionWhere.externalRefId = endUserId;
+    }
     const readyConnections = await this.prisma.connectionRef.findMany({
-      where: { workspaceId, provider: { in: intent.connectors }, status: 'READY' },
+      where: connectionWhere,
     });
     const readyProviders = new Set(readyConnections.map((c) => c.provider));
     const missingProviders = intent.connectors.filter((c) => !readyProviders.has(c));
@@ -34,6 +43,7 @@ export class AgentAssemblerService {
         workspaceId,
         name,
         naturalLanguageCommand: command,
+        endUserId: endUserId || null,
         scheduleCron: intent.trigger.schedule || null,
         triggerType: intent.trigger.type,
         requiredConnections: intent.connectors,
@@ -62,6 +72,7 @@ export class AgentAssemblerService {
           workspaceId,
           agentDraftId: agent.id,
           provider,
+          endUserId,
         });
         this.logger.log(`OAuth required for provider: ${provider}`);
       }

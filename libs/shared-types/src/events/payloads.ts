@@ -47,6 +47,7 @@ export interface ConnectionOAuthRequiredEvent {
   agentDraftId: string;
   provider: string;
   connectionRefId?: string;
+  endUserId?: string;
 }
 
 export interface ConnectionOAuthCompletedEvent {
@@ -82,6 +83,7 @@ export interface AgentCommandSubmittedEvent {
   workspaceId: string;
   commandId: string;
   naturalLanguageCommand: string;
+  endUserId?: string;
 }
 
 export interface AgentDefinitionCreatedEvent {

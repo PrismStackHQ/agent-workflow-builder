@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAgentChat } from '@/hooks/use-agent-chat';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
@@ -19,6 +19,11 @@ export function ChatContainer() {
     useAgentChat();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions] = useState<ChatSession[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className="h-screen flex bg-white">
@@ -97,10 +102,10 @@ export function ChatContainer() {
 
           {/* Sidebar footer */}
           <div className="p-3 border-t border-surface-200">
-            <div className="flex items-center gap-2 px-2 py-1.5">
-              <ConnectionDot connected={connected} />
-              <span className="text-xs text-surface-500">
-                {connected ? 'Connected' : 'Disconnected'}
+            <div className="flex items-center gap-2 px-2 py-1.5" suppressHydrationWarning>
+              <ConnectionDot connected={mounted && connected} />
+              <span className="text-xs text-surface-500" suppressHydrationWarning>
+                {mounted ? (connected ? 'Connected' : 'Disconnected') : 'Connecting...'}
               </span>
             </div>
           </div>
@@ -131,8 +136,8 @@ export function ChatContainer() {
               </svg>
             </button>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-surface-900">
-                {messages.length > 0 ? 'Chat' : 'New Chat'}
+              <h2 className="text-sm font-semibold text-surface-900" suppressHydrationWarning>
+                {mounted && messages.length > 0 ? 'Chat' : 'New Chat'}
               </h2>
               {processing && (
                 <span className="inline-flex items-center gap-1 text-xs text-primary-600 bg-primary-50 px-2 py-0.5 rounded-full">
@@ -173,8 +178,8 @@ export function ChatContainer() {
         {/* Input */}
         <ChatInput
           onSend={sendMessage}
-          disabled={!connected}
-          placeholder={connected ? 'Describe your workflow...' : 'Connecting...'}
+          disabled={!mounted || !connected}
+          placeholder={mounted && connected ? 'Describe your workflow...' : 'Connecting...'}
         />
       </div>
     </div>

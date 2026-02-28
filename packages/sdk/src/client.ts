@@ -31,11 +31,11 @@ export class AgentWorkflowClient {
     this.rest = new RestClient(options);
     this.wsClient = new WsClient(options);
 
-    this.agents = new AgentsResource(this.rest);
+    this.agents = new AgentsResource(this.rest, options.endUserId);
     this.runs = new RunsResource(this.rest);
     this.integrations = new IntegrationsResource(this.rest);
     this.tools = new ToolsResource(this.rest);
-    this.connections = new ConnectionsResource(this.rest);
+    this.connections = new ConnectionsResource(this.rest, options.endUserId);
     this.config = new ConfigResource(this.rest);
   }
 
@@ -63,7 +63,10 @@ export class AgentWorkflowClient {
 }
 
 class AgentsResource {
-  constructor(private rest: RestClient) {}
+  constructor(
+    private rest: RestClient,
+    private endUserId?: string,
+  ) {}
 
   create(input: CreateAgentInput): Promise<Agent> {
     return this.rest.post<Agent>('/agents', input);
@@ -83,9 +86,11 @@ class AgentsResource {
 
   submitCommand(
     command: string,
+    endUserId?: string,
   ): Promise<{ commandId: string; status: string }> {
     return this.rest.post('/agents/command', {
       naturalLanguageCommand: command,
+      endUserId: endUserId ?? this.endUserId,
     });
   }
 }
@@ -158,7 +163,10 @@ class ToolsResource {
 }
 
 class ConnectionsResource {
-  constructor(private rest: RestClient) {}
+  constructor(
+    private rest: RestClient,
+    private defaultEndUserId?: string,
+  ) {}
 
   check(
     integrationKey: string,
@@ -173,12 +181,16 @@ class ConnectionsResource {
   async complete(
     integrationKey: string,
     connectionId: string,
-    endUserId: string,
+    endUserId?: string,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
+    const resolvedEndUserId = endUserId ?? this.defaultEndUserId;
+    if (!resolvedEndUserId) throw new Error('endUserId is required for connections.complete()');
     await this.rest.post('/connections/complete', {
       integrationKey,
       connectionId,
-      endUserId,
+      endUserId: resolvedEndUserId,
+      metadata,
     });
   }
 }
