@@ -180,6 +180,61 @@ export class ConnectionsController {
     });
   }
 
+  @Post('connections/sync')
+  @UseGuards(ApiKeyGuard)
+  async syncConnections(@CurrentWorkspace() workspace: any) {
+    const config = await this.prisma.customerConfig.findUnique({
+      where: { workspaceId: workspace.id },
+    });
+
+    if (!config?.integrationProvider || !config?.connectionEndpointUrl || !config?.connectionEndpointApiKey) {
+      return { ok: false, error: 'No integration provider configured', connections: [] };
+    }
+
+    try {
+      const providerConnections = await this.providerExecutor.listConnections(workspace.id);
+
+      for (const conn of providerConnections) {
+        const externalRefId = conn.endUserId || conn.connectionId;
+        const status = conn.status === 'error' ? 'FAILED' : 'READY';
+
+        await this.prisma.connectionRef.upsert({
+          where: {
+            workspaceId_provider_externalRefId: {
+              workspaceId: workspace.id,
+              provider: conn.providerConfigKey,
+              externalRefId,
+            },
+          },
+          update: {
+            connectionId: conn.connectionId,
+            status: status as any,
+            metadata: conn.metadata as any || undefined,
+          },
+          create: {
+            workspaceId: workspace.id,
+            provider: conn.providerConfigKey,
+            externalRefId,
+            connectionId: conn.connectionId,
+            status: status as any,
+            metadata: conn.metadata as any || undefined,
+          },
+        });
+      }
+
+      const connections = await this.prisma.connectionRef.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      this.logger.log(`Synced ${providerConnections.length} connections for workspace ${workspace.id}`);
+      return { ok: true, connections, syncedCount: providerConnections.length };
+    } catch (err) {
+      this.logger.error(`Failed to sync connections: ${err}`);
+      return { ok: false, error: String(err), connections: [] };
+    }
+  }
+
   @Post('connections/check')
   @UseGuards(ApiKeyGuard)
   async checkConnection(

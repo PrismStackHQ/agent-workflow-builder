@@ -58,6 +58,14 @@ function ApiKeysIcon() {
   );
 }
 
+function ConnectionsIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -99,7 +107,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'ADMIN',
     items: [
-      { href: '/connections', label: 'Integrations', icon: <IntegrationsIcon /> },
+      { href: '/integrations', label: 'Integrations', icon: <IntegrationsIcon /> },
+      { href: '/connections', label: 'Connections', icon: <ConnectionsIcon /> },
       { href: '/tools', label: 'Tools', icon: <ToolsIcon /> },
       { href: '/api-keys', label: 'API Keys', icon: <ApiKeysIcon /> },
       { href: '/settings', label: 'Settings', icon: <SettingsIcon /> },

@@ -4,6 +4,7 @@ import {
   ToolDefinition,
   ConnectionCheckResult,
   ActionExecutionResult,
+  ProviderConnection,
 } from '../provider.interface';
 
 @Injectable()
@@ -13,6 +14,11 @@ export class UnipileProvider implements IIntegrationProvider {
 
   async listTools(): Promise<ToolDefinition[]> {
     this.logger.log('Unipile listTools not yet implemented');
+    return [];
+  }
+
+  async listConnections(): Promise<ProviderConnection[]> {
+    this.logger.log('Unipile listConnections not yet implemented');
     return [];
   }
 

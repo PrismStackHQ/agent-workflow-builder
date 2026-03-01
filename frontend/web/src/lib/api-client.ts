@@ -170,6 +170,14 @@ class ApiClient {
     return res.json();
   }
 
+  async syncConnections() {
+    const res = await fetch(`${API_BASE}/connections/sync`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    return res.json();
+  }
+
   async markConnectionReady(refId: string) {
     const res = await fetch(`${API_BASE}/connections/${refId}/ready`, {
       method: 'PATCH',

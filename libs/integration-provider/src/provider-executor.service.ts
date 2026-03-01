@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
 import { ProviderFactory } from './provider-factory.service';
-import { ActionExecutionResult, ConnectionCheckResult } from './provider.interface';
+import { ActionExecutionResult, ConnectionCheckResult, ProviderConnection } from './provider.interface';
 
 @Injectable()
 export class ProviderExecutorService {
@@ -36,6 +36,15 @@ export class ProviderExecutorService {
       config.connectionEndpointApiKey!,
       connectionId,
       integrationKey,
+    );
+  }
+
+  async listConnections(workspaceId: string): Promise<ProviderConnection[]> {
+    const config = await this.getWorkspaceConfig(workspaceId);
+    const provider = this.providerFactory.getProvider(config.integrationProvider!);
+    return provider.listConnections(
+      config.connectionEndpointUrl!,
+      config.connectionEndpointApiKey!,
     );
   }
 

@@ -76,9 +76,12 @@ export class NlParserService {
   /**
    * Resolves user-mentioned providers to actual integrationKey values
    * from the ToolRegistryEntry table.
+   *
+   * Uses a scoring approach: each integration key gets a relevance score
+   * based on how well it matches the command. Only the best matches are returned,
+   * avoiding false positives like matching "google-calendar" when user said "Google Drive".
    */
   private async resolveConnectors(command: string, workspaceId: string): Promise<string[]> {
-    // Get all available integration keys from the tool registry
     const entries = await this.prisma.toolRegistryEntry.findMany({
       where: { workspaceId },
       select: { integrationKey: true },
@@ -91,45 +94,73 @@ export class NlParserService {
       return this.fallbackConnectorExtraction(command);
     }
 
-    const matched = new Set<string>();
+    const scores = new Map<string, number>();
 
-    // Strategy 1: Check if any known user keyword appears in the command,
-    // then find a matching integrationKey
+    // Strategy 1: Full key match (highest confidence)
+    // e.g. "google drive" in command → matches "google-drive-4" via base key "google-drive"
+    for (const key of availableKeys) {
+      const keyLower = key.toLowerCase();
+      const keyBase = keyLower.replace(/-\d+$/, ''); // strip version suffix
+      const keySpaced = keyBase.replace(/-/g, ' ');
+
+      if (command.includes(keyLower) || command.includes(keyBase) || command.includes(keySpaced)) {
+        scores.set(key, (scores.get(key) || 0) + 100);
+      }
+    }
+
+    // Strategy 2: Keyword alias matching with specificity scoring
+    // Multi-word keywords (like "google drive") are more specific than single-word ones
     for (const [keyword, fragments] of Object.entries(KEYWORD_ALIASES)) {
-      if (command.includes(keyword)) {
+      const isMultiWord = keyword.includes(' ');
+      const found = isMultiWord
+        ? command.includes(keyword)
+        : new RegExp(`\\b${keyword}\\b`).test(command);
+
+      if (found) {
+        // Multi-word keywords get a bonus for specificity
+        const keywordBonus = isMultiWord ? 20 : 0;
         for (const key of availableKeys) {
           const keyLower = key.toLowerCase();
-          if (fragments.some((f) => keyLower.includes(f))) {
-            matched.add(key);
+          for (const f of fragments) {
+            if (keyLower.includes(f)) {
+              scores.set(key, (scores.get(key) || 0) + f.length * 2 + keywordBonus);
+            }
           }
         }
       }
     }
 
-    // Strategy 2: Check if any integrationKey (or part of it) appears directly in the command
+    // Strategy 3: Discriminating segment match — skip generic segments like "google"
+    const GENERIC_SEGMENTS = new Set(['google', 'microsoft', 'apple', 'api', 'app', 'service', 'cloud']);
     for (const key of availableKeys) {
       const keyLower = key.toLowerCase();
-      // Check full key (e.g. "google-mail")
-      if (command.includes(keyLower) || command.includes(keyLower.replace(/-/g, ' '))) {
-        matched.add(key);
-        continue;
-      }
-      // Check each segment of the key (e.g. "mail" from "google-mail")
-      const segments = keyLower.split(/[-_]/);
+      const segments = keyLower.split(/[-_]/).filter(
+        (s) => s.length >= 3 && !GENERIC_SEGMENTS.has(s) && !/^\d+$/.test(s),
+      );
       for (const segment of segments) {
-        if (segment.length >= 4 && command.includes(segment)) {
-          matched.add(key);
+        if (new RegExp(`\\b${segment}\\b`).test(command)) {
+          scores.set(key, (scores.get(key) || 0) + segment.length * 3);
         }
       }
     }
 
-    if (matched.size === 0) {
+    if (scores.size === 0) {
       this.logger.warn('No connectors matched from tool registry, falling back');
       return this.fallbackConnectorExtraction(command);
     }
 
-    this.logger.log(`Resolved connectors from registry: ${[...matched].join(', ')}`);
-    return [...matched];
+    // Only keep matches scoring within 40% of the best score to filter out weak matches
+    const maxScore = Math.max(...scores.values());
+    const threshold = maxScore * 0.4;
+    const results = [...scores.entries()]
+      .filter(([, score]) => score >= threshold)
+      .sort(([, a], [, b]) => b - a)
+      .map(([key]) => key);
+
+    this.logger.log(
+      `Resolved connectors from registry: ${results.join(', ')} (scores: ${[...scores.entries()].map(([k, v]) => `${k}=${v}`).join(', ')})`,
+    );
+    return results;
   }
 
   /**

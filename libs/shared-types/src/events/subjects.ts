@@ -17,6 +17,8 @@ export const SUBJECTS = {
 
   // Agent
   AGENT_COMMAND_SUBMITTED: 'agent.command.submitted',
+  AGENT_PLAN_PREVIEW: 'agent.plan.preview',
+  AGENT_PLAN_CONFIRMED: 'agent.plan.confirmed',
   AGENT_DEFINITION_CREATED: 'agent.definition.created',
   AGENT_DEFINITION_READY: 'agent.definition.ready',
 

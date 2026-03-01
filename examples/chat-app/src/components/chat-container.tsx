@@ -15,7 +15,7 @@ function ConnectionDot({ connected }: { connected: boolean }) {
 }
 
 export function ChatContainer() {
-  const { messages, connected, processing, sendMessage, handleOAuthComplete, clearMessages } =
+  const { messages, connected, processing, sendMessage, handleOAuthComplete, confirmPlan, clearMessages } =
     useAgentChat();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions] = useState<ChatSession[]>([]);
@@ -173,7 +173,7 @@ export function ChatContainer() {
         </div>
 
         {/* Messages */}
-        <MessageList messages={messages} onOAuthConnect={handleOAuthComplete} />
+        <MessageList messages={messages} onOAuthConnect={handleOAuthComplete} onPlanConfirm={confirmPlan} />
 
         {/* Input */}
         <ChatInput

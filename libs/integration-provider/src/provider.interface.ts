@@ -22,6 +22,17 @@ export interface ActionExecutionResult {
   statusCode?: number;
 }
 
+export interface ProviderConnection {
+  connectionId: string;
+  provider: string;
+  providerConfigKey: string;
+  endUserId?: string;
+  status: 'active' | 'error';
+  errors?: string[];
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+}
+
 export interface IIntegrationProvider {
   readonly providerType: string;
 
@@ -30,6 +41,11 @@ export interface IIntegrationProvider {
     apiKey: string,
     integrationKey?: string,
   ): Promise<ToolDefinition[]>;
+
+  listConnections(
+    baseUrl: string,
+    apiKey: string,
+  ): Promise<ProviderConnection[]>;
 
   checkConnection(
     baseUrl: string,

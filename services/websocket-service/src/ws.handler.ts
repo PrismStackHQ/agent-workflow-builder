@@ -3,6 +3,7 @@ import { NatsService } from '@agent-workflow/nats-client';
 import { SUBJECTS } from '@agent-workflow/shared-types';
 import type {
   ConnectionOAuthRequiredEvent,
+  AgentPlanPreviewEvent,
   AgentDefinitionCreatedEvent,
   AgentScheduledEvent,
   AgentRunStartedEvent,
@@ -37,6 +38,27 @@ export class WsHandler implements OnModuleInit {
             agentDraftId: data.agentDraftId,
             provider: data.provider,
             connectionRefId: data.connectionRefId,
+            endUserId: data.endUserId,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentPlanPreviewEvent>(
+      SUBJECTS.AGENT_PLAN_PREVIEW,
+      'ws-agent-plan-preview',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_plan_preview',
+          payload: {
+            commandId: data.commandId,
+            name: data.name,
+            naturalLanguageCommand: data.naturalLanguageCommand,
+            triggerType: data.triggerType,
+            schedule: data.schedule,
+            connectors: data.connectors,
+            steps: data.steps,
+            missingConnections: data.missingConnections,
             endUserId: data.endUserId,
           },
         });

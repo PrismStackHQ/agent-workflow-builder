@@ -62,6 +62,9 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       case 'connection_completed':
         await this.handleConnectionCompleted(client, msg.payload);
         break;
+      case 'agent_plan_confirm':
+        await this.handlePlanConfirm(client, msg.payload);
+        break;
       case 'ping':
         this.send(client, { type: 'pong' });
         break;
@@ -148,6 +151,38 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       workspaceId: client.workspaceId,
       integrationKey: payload.integrationKey,
       connectionId: payload.connectionId,
+      endUserId: payload.endUserId,
+    });
+  }
+
+  private async handlePlanConfirm(
+    client: AuthenticatedSocket,
+    payload: {
+      commandId: string;
+      name: string;
+      naturalLanguageCommand: string;
+      triggerType: string;
+      schedule?: string;
+      connectors: string[];
+      steps: any[];
+      endUserId?: string;
+    },
+  ) {
+    if (!client.workspaceId) {
+      this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
+      return;
+    }
+
+    await this.nats.publish(SUBJECTS.AGENT_PLAN_CONFIRMED, {
+      orgId: client.orgId,
+      workspaceId: client.workspaceId,
+      commandId: payload.commandId,
+      name: payload.name,
+      naturalLanguageCommand: payload.naturalLanguageCommand,
+      triggerType: payload.triggerType,
+      schedule: payload.schedule,
+      connectors: payload.connectors,
+      steps: payload.steps,
       endUserId: payload.endUserId,
     });
   }

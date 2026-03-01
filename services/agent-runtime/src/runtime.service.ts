@@ -210,11 +210,29 @@ export class RuntimeService {
       return localAdapter.execute(step.params, context);
     }
 
+    // Resolve the actual provider connection ID from our ConnectionRef table
+    // The endUserConnectionId is the externalRefId (end-user ID), not the provider's connection ID
+    let providerConnectionId = context.endUserConnectionId;
+    if (providerConnectionId && step.connector) {
+      const connectionRef = await this.prisma.connectionRef.findFirst({
+        where: {
+          workspaceId: context.workspaceId,
+          provider: step.connector,
+          externalRefId: providerConnectionId,
+          status: 'READY',
+        },
+        select: { connectionId: true },
+      });
+      if (connectionRef?.connectionId) {
+        providerConnectionId = connectionRef.connectionId;
+      }
+    }
+
     // Execute via integration provider proxy
     const result = await this.providerExecutor.executeViaProvider(
       context.workspaceId,
       step.connector,
-      context.endUserConnectionId,
+      providerConnectionId,
       step.action,
       step.params,
     );
@@ -232,10 +250,26 @@ export class RuntimeService {
       return false;
     }
 
+    // Look up actual provider connection ID from ConnectionRef
+    const connectionRef = await this.prisma.connectionRef.findFirst({
+      where: {
+        workspaceId: context.workspaceId,
+        provider: step.connector,
+        externalRefId: context.endUserConnectionId,
+        status: 'READY',
+      },
+      select: { connectionId: true },
+    });
+
+    if (!connectionRef?.connectionId) {
+      this.logger.warn(`No READY connection found for ${step.connector} / ${context.endUserConnectionId}`);
+      return false;
+    }
+
     try {
       const result = await this.providerExecutor.checkConnection(
         context.workspaceId,
-        context.endUserConnectionId,
+        connectionRef.connectionId,
         step.connector,
       );
       return result.connected;

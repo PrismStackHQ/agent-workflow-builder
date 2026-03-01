@@ -7,6 +7,7 @@ export {
   ToolDefinition,
   ConnectionCheckResult,
   ActionExecutionResult,
+  ProviderConnection,
 } from './provider.interface';
 export { NangoProvider } from './providers/nango.provider';
 export { UnipileProvider } from './providers/unipile.provider';

@@ -1,16 +1,17 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { ChatMessage } from '@/lib/types';
+import type { ChatMessage, PlanPreviewData } from '@/lib/types';
 import { UserMessage } from './user-message';
 import { AgentMessage } from './agent-message';
 
 interface MessageListProps {
   messages: ChatMessage[];
   onOAuthConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
+  onPlanConfirm?: (plan: PlanPreviewData) => void;
 }
 
-export function MessageList({ messages, onOAuthConnect }: MessageListProps) {
+export function MessageList({ messages, onOAuthConnect, onPlanConfirm }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function MessageList({ messages, onOAuthConnect }: MessageListProps) {
           return <UserMessage key={msg.id} message={msg} />;
         }
         if (msg.role === 'agent') {
-          return <AgentMessage key={msg.id} message={msg} onOAuthConnect={onOAuthConnect} />;
+          return <AgentMessage key={msg.id} message={msg} onOAuthConnect={onOAuthConnect} onPlanConfirm={onPlanConfirm} />;
         }
         // System messages
         return (

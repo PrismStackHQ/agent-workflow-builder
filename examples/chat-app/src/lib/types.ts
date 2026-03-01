@@ -33,6 +33,23 @@ export interface ToolResultData {
   status: 'running' | 'completed' | 'failed';
 }
 
+export interface PlanPreviewData {
+  commandId: string;
+  name: string;
+  naturalLanguageCommand: string;
+  triggerType: string;
+  schedule?: string;
+  connectors: string[];
+  steps: Array<{
+    index: number;
+    action: string;
+    connector: string;
+    params: Record<string, unknown>;
+  }>;
+  missingConnections: string[];
+  endUserId?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -42,6 +59,7 @@ export interface ChatMessage {
   steps?: ChatStep[];
   connectionCard?: ConnectionCardData;
   toolResult?: ToolResultData;
+  planPreview?: PlanPreviewData;
   agentId?: string;
   runId?: string;
   elapsedMs?: number;

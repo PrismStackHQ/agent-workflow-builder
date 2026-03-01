@@ -4,6 +4,7 @@ import {
   ToolDefinition,
   ConnectionCheckResult,
   ActionExecutionResult,
+  ProviderConnection,
 } from '../provider.interface';
 
 @Injectable()
@@ -71,6 +72,40 @@ export class NangoProvider implements IIntegrationProvider {
     }
 
     return tools;
+  }
+
+  async listConnections(
+    baseUrl: string,
+    apiKey: string,
+  ): Promise<ProviderConnection[]> {
+    const nangoBase = this.nangoBaseUrl(baseUrl);
+
+    try {
+      const res = await fetch(`${nangoBase}/connections`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Nango connections error: ${res.status} ${res.statusText}`);
+      }
+
+      const body: any = await res.json();
+      const connections: any[] = body.connections || [];
+
+      return connections.map((c: any) => ({
+        connectionId: c.connection_id,
+        provider: c.provider,
+        providerConfigKey: c.provider_config_key,
+        endUserId: c.tags?.end_user_id || undefined,
+        status: (c.errors && c.errors.length > 0) ? 'error' as const : 'active' as const,
+        errors: c.errors?.map((e: any) => e.type || e.message),
+        metadata: { nangoId: c.id, tags: c.tags, created: c.created, provider: c.provider },
+        createdAt: c.created,
+      }));
+    } catch (err) {
+      this.logger.error(`Failed to list Nango connections: ${err}`);
+      throw err;
+    }
   }
 
   async checkConnection(

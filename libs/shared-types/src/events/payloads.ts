@@ -77,6 +77,34 @@ export interface RagQueryRequest {
   query: string;
 }
 
+// Agent plan events
+export interface AgentPlanPreviewEvent {
+  orgId: string;
+  workspaceId: string;
+  commandId: string;
+  name: string;
+  naturalLanguageCommand: string;
+  triggerType: string;
+  schedule?: string;
+  connectors: string[];
+  steps: AgentStep[];
+  missingConnections: string[];
+  endUserId?: string;
+}
+
+export interface AgentPlanConfirmedEvent {
+  orgId: string;
+  workspaceId: string;
+  commandId: string;
+  naturalLanguageCommand: string;
+  name: string;
+  triggerType: string;
+  schedule?: string;
+  connectors: string[];
+  steps: AgentStep[];
+  endUserId?: string;
+}
+
 // Agent events
 export interface AgentCommandSubmittedEvent {
   orgId: string;

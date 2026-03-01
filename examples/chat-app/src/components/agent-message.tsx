@@ -1,14 +1,16 @@
 'use client';
 
-import type { ChatMessage } from '@/lib/types';
+import type { ChatMessage, PlanPreviewData } from '@/lib/types';
 import { StepIndicator } from './step-indicator';
 import { ConnectionCard } from './connection-card';
 import { ToolResult } from './tool-result';
 import { ThinkingIndicator } from './thinking-indicator';
+import { PlanPreviewCard } from './plan-preview-card';
 
 interface AgentMessageProps {
   message: ChatMessage;
   onOAuthConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
+  onPlanConfirm?: (plan: PlanPreviewData) => void;
 }
 
 function formatElapsed(ms: number): string {
@@ -20,7 +22,7 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-export function AgentMessage({ message, onOAuthConnect }: AgentMessageProps) {
+export function AgentMessage({ message, onOAuthConnect, onPlanConfirm }: AgentMessageProps) {
   const isProcessing = message.status === 'processing';
   const isError = message.status === 'error';
 
@@ -58,6 +60,14 @@ export function AgentMessage({ message, onOAuthConnect }: AgentMessageProps) {
           </div>
         )}
 
+        {/* Plan preview card */}
+        {message.planPreview && onPlanConfirm && (
+          <PlanPreviewCard
+            plan={message.planPreview}
+            onConfirm={onPlanConfirm}
+          />
+        )}
+
         {/* Connection card */}
         {message.connectionCard && (
           <ConnectionCard card={message.connectionCard} onConnect={onOAuthConnect} />
@@ -67,7 +77,7 @@ export function AgentMessage({ message, onOAuthConnect }: AgentMessageProps) {
         {message.toolResult && <ToolResult data={message.toolResult} />}
 
         {/* Thinking indicator */}
-        {isProcessing && !message.steps?.some((s) => s.status === 'running') && !message.connectionCard && (
+        {isProcessing && !message.steps?.some((s) => s.status === 'running') && !message.connectionCard && !message.planPreview && (
           <ThinkingIndicator />
         )}
       </div>

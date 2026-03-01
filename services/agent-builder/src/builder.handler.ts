@@ -4,8 +4,8 @@ import { PrismaService } from '@agent-workflow/prisma-client';
 import { SUBJECTS } from '@agent-workflow/shared-types';
 import type {
   AgentCommandSubmittedEvent,
-  ConnectionOAuthCompletedEvent,
-  ConnectionCompletedEvent,
+  AgentPlanConfirmedEvent,
+  ParsedIntent,
 } from '@agent-workflow/shared-types';
 import { NlParserService } from './builder/nl-parser.service';
 import { AgentAssemblerService } from './builder/agent-assembler.service';
@@ -24,6 +24,7 @@ export class BuilderHandler implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    // Step 1: When a command is submitted, parse it and publish a plan preview
     await this.nats.subscribe<AgentCommandSubmittedEvent>(
       SUBJECTS.AGENT_COMMAND_SUBMITTED,
       'agent-builder-command-submitted',
@@ -31,7 +32,7 @@ export class BuilderHandler implements OnModuleInit {
         this.logger.log(`Processing command ${data.commandId} for workspace ${data.workspaceId}`);
 
         try {
-          let intent;
+          let intent: ParsedIntent;
           try {
             if (process.env.OPENAI_API_KEY) {
               intent = await this.llmPlanner.plan(
@@ -47,13 +48,44 @@ export class BuilderHandler implements OnModuleInit {
             intent = await this.nlParser.parse(data.naturalLanguageCommand, data.workspaceId);
           }
 
-          await this.assembler.assembleAgent(
-            data.orgId,
-            data.workspaceId,
-            data.commandId,
-            data.naturalLanguageCommand,
-            intent,
-            data.endUserId,
+          // Check which connections are missing
+          const connectionWhere: Record<string, unknown> = {
+            workspaceId: data.workspaceId,
+            provider: { in: intent.connectors },
+            status: 'READY',
+          };
+          if (data.endUserId) {
+            connectionWhere.externalRefId = data.endUserId;
+          }
+
+          const readyConnections = await this.prisma.connectionRef.findMany({
+            where: connectionWhere,
+          });
+          const readyProviders = new Set(readyConnections.map((c) => c.provider));
+          const missingConnections = intent.connectors.filter((c) => !readyProviders.has(c));
+
+          const name =
+            data.naturalLanguageCommand.length > 50
+              ? data.naturalLanguageCommand.substring(0, 47) + '...'
+              : data.naturalLanguageCommand;
+
+          // Publish plan preview — don't create agent yet
+          await this.nats.publish(SUBJECTS.AGENT_PLAN_PREVIEW, {
+            orgId: data.orgId,
+            workspaceId: data.workspaceId,
+            commandId: data.commandId,
+            name,
+            naturalLanguageCommand: data.naturalLanguageCommand,
+            triggerType: intent.trigger.type,
+            schedule: intent.trigger.schedule,
+            connectors: intent.connectors,
+            steps: intent.steps,
+            missingConnections,
+            endUserId: data.endUserId,
+          });
+
+          this.logger.log(
+            `Plan preview published for command ${data.commandId}: ${intent.steps.length} steps, ${missingConnections.length} missing connections`,
           );
         } catch (err) {
           this.logger.error(`Failed to process command: ${err}`);
@@ -61,73 +93,51 @@ export class BuilderHandler implements OnModuleInit {
       },
     );
 
-    await this.nats.subscribe<ConnectionOAuthCompletedEvent>(
-      SUBJECTS.CONNECTION_OAUTH_COMPLETED,
-      'agent-builder-oauth-completed',
+    // Step 2: When user confirms the plan, create the agent and trigger first run
+    await this.nats.subscribe<AgentPlanConfirmedEvent>(
+      SUBJECTS.AGENT_PLAN_CONFIRMED,
+      'agent-builder-plan-confirmed',
       async (data) => {
-        this.logger.log(`OAuth completed for workspace ${data.workspaceId}, provider ${data.provider}`);
+        this.logger.log(`Plan confirmed for command ${data.commandId} in workspace ${data.workspaceId}`);
 
-        if (data.connectionRefId) {
-          await this.prisma.connectionRef.update({
-            where: { id: data.connectionRefId },
-            data: { status: 'READY' },
+        try {
+          const intent: ParsedIntent = {
+            trigger: {
+              type: data.triggerType as 'cron' | 'event',
+              schedule: data.schedule,
+            },
+            connectors: data.connectors,
+            steps: data.steps,
+          };
+
+          const agent = await this.assembler.assembleAgent(
+            data.orgId,
+            data.workspaceId,
+            data.commandId,
+            data.naturalLanguageCommand,
+            intent,
+            data.endUserId,
+          );
+
+          // Trigger an immediate first run
+          const { randomUUID } = await import('crypto');
+          const runId = randomUUID();
+
+          this.logger.log(`Triggering first run ${runId} for agent ${agent.id}`);
+
+          await this.nats.publish(SUBJECTS.SCHEDULER_RUN_TRIGGERED, {
+            orgId: data.orgId,
+            workspaceId: data.workspaceId,
+            agentId: agent.id,
+            runId,
+            endUserConnectionId: data.endUserId,
           });
+        } catch (err) {
+          this.logger.error(`Failed to create agent after confirmation: ${err}`);
         }
-
-        await this.checkWaitingAgents(data.orgId, data.workspaceId);
-      },
-    );
-
-    // Also listen for CONNECTION_COMPLETED (from REST API POST /connections/complete)
-    // This is the path used when the chat-app registers a Nango OAuth completion directly
-    await this.nats.subscribe<ConnectionCompletedEvent>(
-      SUBJECTS.CONNECTION_COMPLETED,
-      'agent-builder-connection-completed',
-      async (data) => {
-        this.logger.log(`Connection completed for workspace ${data.workspaceId}, provider ${data.integrationKey}, endUser ${data.endUserId}`);
-        await this.checkWaitingAgents(data.orgId, data.workspaceId);
       },
     );
 
     this.logger.log('Agent builder handler initialized');
-  }
-
-  private async checkWaitingAgents(orgId: string, workspaceId: string) {
-    const waitingAgents = await this.prisma.agentDefinition.findMany({
-      where: { workspaceId, status: 'WAITING_CONNECTIONS' },
-    });
-
-    for (const agent of waitingAgents) {
-      const required = agent.requiredConnections as string[];
-      const connectionWhere: Record<string, unknown> = {
-        workspaceId,
-        provider: { in: required },
-        status: 'READY',
-      };
-      if (agent.endUserId) {
-        connectionWhere.externalRefId = agent.endUserId;
-      }
-      const ready = await this.prisma.connectionRef.findMany({
-        where: connectionWhere,
-      });
-
-      const readyProviders = new Set(ready.map((r) => r.provider));
-      const allReady = required.every((p) => readyProviders.has(p));
-
-      if (allReady) {
-        await this.prisma.agentDefinition.update({
-          where: { id: agent.id },
-          data: { status: 'READY' },
-        });
-
-        await this.nats.publish(SUBJECTS.AGENT_DEFINITION_READY, {
-          orgId,
-          workspaceId,
-          agentId: agent.id,
-        });
-
-        this.logger.log(`Agent ${agent.id} is now READY`);
-      }
-    }
   }
 }
