@@ -194,9 +194,13 @@ export class ConnectionsController {
     try {
       const providerConnections = await this.providerExecutor.listConnections(workspace.id);
 
+      // Track which connectionRef IDs we see from the provider
+      const liveKeys = new Set<string>();
+
       for (const conn of providerConnections) {
         const externalRefId = conn.endUserId || conn.connectionId;
         const status = conn.status === 'error' ? 'FAILED' : 'READY';
+        liveKeys.add(`${conn.providerConfigKey}::${externalRefId}`);
 
         await this.prisma.connectionRef.upsert({
           where: {
@@ -222,13 +226,29 @@ export class ConnectionsController {
         });
       }
 
+      // Remove stale ConnectionRefs that no longer exist on the provider side
+      const allLocalRefs = await this.prisma.connectionRef.findMany({
+        where: { workspaceId: workspace.id },
+      });
+
+      const staleIds = allLocalRefs
+        .filter((ref) => !liveKeys.has(`${ref.provider}::${ref.externalRefId}`))
+        .map((ref) => ref.id);
+
+      if (staleIds.length > 0) {
+        await this.prisma.connectionRef.deleteMany({
+          where: { id: { in: staleIds } },
+        });
+        this.logger.log(`Removed ${staleIds.length} stale connection(s) deleted from provider`);
+      }
+
       const connections = await this.prisma.connectionRef.findMany({
         where: { workspaceId: workspace.id },
         orderBy: { updatedAt: 'desc' },
       });
 
       this.logger.log(`Synced ${providerConnections.length} connections for workspace ${workspace.id}`);
-      return { ok: true, connections, syncedCount: providerConnections.length };
+      return { ok: true, connections, syncedCount: providerConnections.length, removedCount: staleIds.length };
     } catch (err) {
       this.logger.error(`Failed to sync connections: ${err}`);
       return { ok: false, error: String(err), connections: [] };

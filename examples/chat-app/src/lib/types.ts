@@ -50,6 +50,12 @@ export interface PlanPreviewData {
   endUserId?: string;
 }
 
+export interface WorkflowResultItem {
+  stepIndex: number;
+  stepName: string;
+  data: unknown;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -60,6 +66,7 @@ export interface ChatMessage {
   connectionCard?: ConnectionCardData;
   toolResult?: ToolResultData;
   planPreview?: PlanPreviewData;
+  workflowResults?: WorkflowResultItem[];
   agentId?: string;
   runId?: string;
   elapsedMs?: number;

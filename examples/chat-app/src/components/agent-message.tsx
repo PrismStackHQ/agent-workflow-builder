@@ -6,6 +6,7 @@ import { ConnectionCard } from './connection-card';
 import { ToolResult } from './tool-result';
 import { ThinkingIndicator } from './thinking-indicator';
 import { PlanPreviewCard } from './plan-preview-card';
+import { WorkflowResultCard } from './workflow-result-card';
 
 interface AgentMessageProps {
   message: ChatMessage;
@@ -75,6 +76,11 @@ export function AgentMessage({ message, onOAuthConnect, onPlanConfirm }: AgentMe
 
         {/* Tool result */}
         {message.toolResult && <ToolResult data={message.toolResult} />}
+
+        {/* Workflow results card */}
+        {message.workflowResults && message.workflowResults.length > 0 && (
+          <WorkflowResultCard results={message.workflowResults} />
+        )}
 
         {/* Thinking indicator */}
         {isProcessing && !message.steps?.some((s) => s.status === 'running') && !message.connectionCard && !message.planPreview && (

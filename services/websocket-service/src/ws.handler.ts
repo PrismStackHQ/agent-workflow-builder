@@ -118,6 +118,7 @@ export class WsHandler implements OnModuleInit {
             runId: data.runId,
             stepIndex: data.stepIndex,
             stepName: data.stepName,
+            result: data.result,
           },
         });
       },

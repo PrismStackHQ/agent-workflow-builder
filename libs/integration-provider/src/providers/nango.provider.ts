@@ -6,6 +6,7 @@ import {
   ActionExecutionResult,
   ProviderConnection,
 } from '../provider.interface';
+import { ProxyActionConfig } from '../proxy/proxy-action.types';
 
 @Injectable()
 export class NangoProvider implements IIntegrationProvider {
@@ -162,11 +163,11 @@ export class NangoProvider implements IIntegrationProvider {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          'Connection-Id': connectionId,
+          'Provider-Config-Key': integrationKey,
         },
         body: JSON.stringify({
           action_name: actionName,
-          connection_id: connectionId,
-          provider_config_key: integrationKey,
           input,
         }),
       });
@@ -174,9 +175,12 @@ export class NangoProvider implements IIntegrationProvider {
       const data: any = await res.json();
 
       if (!res.ok) {
+        const rawError = data.error || data.message || `Nango action error: ${res.status}`;
+        const errorStr = typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
+        this.logger.error(`Nango action ${actionName} failed (${res.status}): ${errorStr}`);
         return {
           success: false,
-          error: data.error || data.message || `Nango action error: ${res.status}`,
+          error: errorStr,
           statusCode: res.status,
         };
       }
@@ -184,6 +188,86 @@ export class NangoProvider implements IIntegrationProvider {
       return { success: true, data, statusCode: res.status };
     } catch (err) {
       this.logger.error(`Failed to execute Nango action ${actionName}: ${err}`);
+      return { success: false, error: String(err) };
+    }
+  }
+
+  /**
+   * Execute an action via Nango's proxy API, which forwards requests directly
+   * to the third-party provider's REST API using Nango-managed OAuth credentials.
+   *
+   * Unlike executeAction (which calls Nango's /action/trigger), this method
+   * calls the provider's native endpoint through Nango's /proxy path.
+   *
+   * @see https://nango.dev/docs/guides/primitives/proxy
+   */
+  async executeProxy(
+    baseUrl: string,
+    apiKey: string,
+    connectionId: string,
+    providerConfigKey: string,
+    config: ProxyActionConfig,
+    input: Record<string, unknown>,
+  ): Promise<ActionExecutionResult> {
+    const nangoBase = this.nangoBaseUrl(baseUrl);
+
+    try {
+      // Resolve {{param}} template placeholders in the endpoint path
+      let endpoint = config.endpoint;
+      endpoint = endpoint.replace(/\{\{(\w+)\}\}/g, (_, paramName) => {
+        const value = input[paramName];
+        if (value === undefined) {
+          throw new Error(`Missing required path parameter: ${paramName}`);
+        }
+        return encodeURIComponent(String(value));
+      });
+
+      // Build query string from paramsBuilder
+      const queryParams = config.paramsBuilder?.(input) || {};
+      const queryString = new URLSearchParams(queryParams).toString();
+      const fullUrl = queryString
+        ? `${nangoBase}/proxy${endpoint}?${queryString}`
+        : `${nangoBase}/proxy${endpoint}`;
+
+      // Build headers — use the actual Nango provider config key (e.g., "google-drive-4"),
+      // not the registry's base key (e.g., "google-drive")
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${apiKey}`,
+        'Connection-Id': connectionId,
+        'Provider-Config-Key': providerConfigKey,
+        ...(config.headersBuilder?.(input) || {}),
+      };
+
+      // Build fetch options
+      const fetchOptions: RequestInit = { method: config.method, headers };
+
+      // Add body for methods that support it
+      if (['POST', 'PUT', 'PATCH'].includes(config.method) && config.bodyBuilder) {
+        headers['Content-Type'] = 'application/json';
+        fetchOptions.body = JSON.stringify(config.bodyBuilder(input));
+      }
+
+      this.logger.log(
+        `Nango proxy ${config.method} ${endpoint} [${config.actionType}] for ${providerConfigKey}`,
+      );
+
+      const res = await fetch(fullUrl, fetchOptions);
+      const data: any = await res.json();
+
+      if (!res.ok) {
+        const rawError = data.error || data.message || `Nango proxy error: ${res.status}`;
+        const errorStr = typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
+        this.logger.error(
+          `Nango proxy ${config.actionName} failed (${res.status}): ${errorStr}`,
+        );
+        return { success: false, error: errorStr, statusCode: res.status };
+      }
+
+      // Apply response mapper if defined
+      const mapped = config.responseMapper ? config.responseMapper(data) : data;
+      return { success: true, data: mapped, statusCode: res.status };
+    } catch (err) {
+      this.logger.error(`Failed to execute Nango proxy ${config.actionName}: ${err}`);
       return { success: false, error: String(err) };
     }
   }

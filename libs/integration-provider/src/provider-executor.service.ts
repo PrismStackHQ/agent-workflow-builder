@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
 import { ProviderFactory } from './provider-factory.service';
 import { ActionExecutionResult, ConnectionCheckResult, ProviderConnection } from './provider.interface';
+import { ProxyActionRegistry } from './proxy/proxy-action.registry';
+import { NangoProvider } from './providers/nango.provider';
 
 @Injectable()
 export class ProviderExecutorService {
@@ -10,6 +12,7 @@ export class ProviderExecutorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerFactory: ProviderFactory,
+    private readonly proxyRegistry: ProxyActionRegistry,
   ) {}
 
   private async getWorkspaceConfig(workspaceId: string) {
@@ -58,6 +61,24 @@ export class ProviderExecutorService {
     const config = await this.getWorkspaceConfig(workspaceId);
     const provider = this.providerFactory.getProvider(config.integrationProvider!);
 
+    // Check if this action has a proxy configuration (Nango-specific)
+    const proxyConfig = this.proxyRegistry.find(integrationKey, actionName);
+
+    if (proxyConfig && provider instanceof NangoProvider) {
+      this.logger.log(
+        `Executing via proxy [${proxyConfig.actionType}]: ${actionName} on ${integrationKey} for connection ${connectionId}`,
+      );
+      return provider.executeProxy(
+        config.connectionEndpointUrl!,
+        config.connectionEndpointApiKey!,
+        connectionId,
+        integrationKey,
+        proxyConfig,
+        input,
+      );
+    }
+
+    // Fallback to standard action/trigger
     this.logger.log(
       `Executing action ${actionName} on ${integrationKey} for connection ${connectionId}`,
     );

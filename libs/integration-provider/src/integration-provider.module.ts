@@ -6,6 +6,7 @@ import { MergeProvider } from './providers/merge.provider';
 import { ProviderFactory } from './provider-factory.service';
 import { ToolRegistryService } from './tool-registry.service';
 import { ProviderExecutorService } from './provider-executor.service';
+import { ProxyActionRegistry } from './proxy/proxy-action.registry';
 
 @Module({
   imports: [PrismaModule],
@@ -16,11 +17,13 @@ import { ProviderExecutorService } from './provider-executor.service';
     ProviderFactory,
     ToolRegistryService,
     ProviderExecutorService,
+    ProxyActionRegistry,
   ],
   exports: [
     ProviderFactory,
     ToolRegistryService,
     ProviderExecutorService,
+    ProxyActionRegistry,
   ],
 })
 export class IntegrationProviderModule {}

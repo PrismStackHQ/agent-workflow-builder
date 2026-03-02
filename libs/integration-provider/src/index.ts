@@ -12,3 +12,5 @@ export {
 export { NangoProvider } from './providers/nango.provider';
 export { UnipileProvider } from './providers/unipile.provider';
 export { MergeProvider } from './providers/merge.provider';
+export { ProxyActionConfig, ActionType, HttpMethod } from './proxy/proxy-action.types';
+export { ProxyActionRegistry } from './proxy/proxy-action.registry';

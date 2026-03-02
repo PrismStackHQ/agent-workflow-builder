@@ -146,6 +146,7 @@ export class RuntimeService {
 
         // Execute step
         const result = await this.executeStep(step, context);
+        this.logger.log(`Run ${runId} Results ${JSON.stringify(result)}`);
         context.previousResults.push(result);
 
         await this.prisma.agentRun.update({

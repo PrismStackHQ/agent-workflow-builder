@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { wsClient } from '@/lib/ws';
-import type { ChatMessage, ChatStep, PlanPreviewData, WsServerMessage } from '@/lib/types';
+import type { ChatMessage, ChatStep, PlanPreviewData, WorkflowResultItem, WsServerMessage } from '@/lib/types';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 11);
@@ -32,6 +32,9 @@ export function useAgentChat() {
 
   // Store the pending plan until all connections are ready
   const pendingPlanRef = useRef<PlanPreviewData | null>(null);
+
+  // Accumulate step results during a run for the final results card
+  const runResultsRef = useRef<WorkflowResultItem[]>([]);
 
   // Connect WebSocket
   useEffect(() => {
@@ -287,6 +290,7 @@ export function useAgentChat() {
 
         case 'agent_run_started':
           currentRunRef.current = p.runId as string;
+          runResultsRef.current = [];
           addMessage({
             id: uid(),
             role: 'agent',
@@ -306,19 +310,35 @@ export function useAgentChat() {
           });
           break;
 
-        case 'agent_run_step_completed':
+        case 'agent_run_step_completed': {
+          const stepResult = p.result;
+          const stepIndex = p.stepIndex as number;
+          const stepName = (p.stepName as string) || `Step ${stepIndex}`;
+
+          // Accumulate step results for the final results card
+          if (stepResult !== undefined && stepResult !== null) {
+            runResultsRef.current.push({
+              stepIndex,
+              stepName,
+              data: stepResult,
+            });
+          }
+
           addStepToLastAgent({
             id: uid(),
-            label: (p.stepName as string) || `Step ${p.stepIndex} completed`,
+            label: stepName,
             status: 'completed',
             icon: 'check',
           });
           break;
+        }
 
         case 'agent_run_succeeded': {
           const elapsed = Date.now() - startTimeRef.current;
+          const collectedResults = [...runResultsRef.current];
           setProcessing(false);
           pendingPlanRef.current = null;
+          runResultsRef.current = [];
           addMessage({
             id: uid(),
             role: 'agent',
@@ -328,6 +348,7 @@ export function useAgentChat() {
             agentId: p.agentId as string,
             runId: p.runId as string,
             elapsedMs: elapsed,
+            workflowResults: collectedResults.length > 0 ? collectedResults : undefined,
             steps: [
               {
                 id: uid(),
@@ -343,6 +364,7 @@ export function useAgentChat() {
         case 'agent_run_failed':
           setProcessing(false);
           pendingPlanRef.current = null;
+          runResultsRef.current = [];
           addMessage({
             id: uid(),
             role: 'agent',

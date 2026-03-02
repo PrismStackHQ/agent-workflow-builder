@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
 import { ProviderFactory } from './provider-factory.service';
+import { ProxyActionRegistry } from './proxy/proxy-action.registry';
 
 @Injectable()
 export class ToolRegistryService {
@@ -9,6 +10,7 @@ export class ToolRegistryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerFactory: ProviderFactory,
+    private readonly proxyRegistry: ProxyActionRegistry,
   ) {}
 
   async syncTools(workspaceId: string): Promise<{ toolCount: number }> {
@@ -45,8 +47,71 @@ export class ToolRegistryService {
       });
     }
 
-    this.logger.log(`Synced ${tools.length} tools for workspace ${workspaceId}`);
-    return { toolCount: tools.length };
+    // Also sync proxy-based tools so they are discoverable
+    const proxyCount = await this.syncProxyTools(workspaceId, config.integrationProvider);
+
+    const totalCount = tools.length + proxyCount;
+    this.logger.log(`Synced ${tools.length} provider tools + ${proxyCount} proxy tools for workspace ${workspaceId}`);
+    return { toolCount: totalCount };
+  }
+
+  /**
+   * Sync proxy action configs into the tool registry so they are discoverable
+   * via getTools() and findToolByAction() alongside Nango-sourced actions.
+   *
+   * Proxy tools are identified by `rawDefinition.proxyAction: true` so they
+   * can be distinguished from provider-native actions when needed.
+   */
+  private async syncProxyTools(workspaceId: string, integrationProvider: string): Promise<number> {
+    const proxyConfigs = this.proxyRegistry.getAll();
+    if (proxyConfigs.length === 0) return 0;
+
+    let count = 0;
+    for (const config of proxyConfigs) {
+      await this.prisma.toolRegistryEntry.upsert({
+        where: {
+          workspaceId_integrationProvider_actionName: {
+            workspaceId,
+            integrationProvider: integrationProvider as any,
+            actionName: config.actionName,
+          },
+        },
+        update: {
+          displayName: config.displayName,
+          description: config.description,
+          inputSchema: (config.inputSchema || undefined) as any,
+          outputSchema: (config.outputSchema || undefined) as any,
+          rawDefinition: {
+            proxyAction: true,
+            actionType: config.actionType,
+            method: config.method,
+            endpoint: config.endpoint,
+            providerConfigKey: config.providerConfigKey,
+          } as any,
+          syncedAt: new Date(),
+        },
+        create: {
+          workspaceId,
+          integrationProvider: integrationProvider as any,
+          integrationKey: config.providerConfigKey,
+          actionName: config.actionName,
+          displayName: config.displayName,
+          description: config.description,
+          inputSchema: (config.inputSchema || undefined) as any,
+          outputSchema: (config.outputSchema || undefined) as any,
+          rawDefinition: {
+            proxyAction: true,
+            actionType: config.actionType,
+            method: config.method,
+            endpoint: config.endpoint,
+            providerConfigKey: config.providerConfigKey,
+          } as any,
+        },
+      });
+      count++;
+    }
+
+    return count;
   }
 
   async getTools(workspaceId: string, integrationKey?: string) {
