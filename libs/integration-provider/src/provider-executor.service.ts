@@ -66,7 +66,7 @@ export class ProviderExecutorService {
 
     if (proxyConfig && provider instanceof NangoProvider) {
       this.logger.log(
-        `Executing via proxy [${proxyConfig.actionType}]: ${actionName} on ${integrationKey} for connection ${connectionId}`,
+        `Executing via proxy [${proxyConfig.actionType}]: ${actionName} on ${integrationKey} for connection ${connectionId} and inputs are ${JSON.stringify(input)}`,
       );
       return provider.executeProxy(
         config.connectionEndpointUrl!,

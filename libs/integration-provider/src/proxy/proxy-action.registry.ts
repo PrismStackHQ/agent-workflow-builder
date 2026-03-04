@@ -191,6 +191,26 @@ export class ProxyActionRegistry {
 
   // -- Google Drive ------------------------------------------------------------
 
+  /** Default result limit applied to proxy SEARCH/LIST actions */
+  private static readonly DEFAULT_LIMIT = 10;
+
+  /**
+   * Extract a search query string from input, checking multiple possible
+   * param names that the LLM planner might generate.
+   */
+  private static extractQuery(input: Record<string, unknown>, ...keys: string[]): string {
+    for (const key of keys) {
+      if (input[key] !== undefined && input[key] !== null && String(input[key]).trim()) {
+        return String(input[key]).trim();
+      }
+    }
+    return '';
+  }
+
+  private static extractLimit(input: Record<string, unknown>, defaultLimit = ProxyActionRegistry.DEFAULT_LIMIT): number {
+    return Number(input.maxResults || input.limit || input.max || input.per_page || input.pageSize || defaultLimit);
+  }
+
   private registerGoogleDriveActions(): void {
     this.register({
       providerConfigKey: 'google-drive',
@@ -201,22 +221,27 @@ export class ProxyActionRegistry {
       method: 'GET',
       endpoint: '/drive/v3/files',
       paramsBuilder: (input) => {
+        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'fileName', 'name', 'search', 'keyword', 'keywords');
         const parts: string[] = [];
-        if (input.fileName) parts.push(`name='${input.fileName}'`);
+        if (searchText) parts.push(`name contains '${searchText}'`);
         if (input.mimeType) parts.push(`mimeType='${input.mimeType}'`);
         parts.push('trashed=false');
+        const limit = ProxyActionRegistry.extractLimit(input);
         return {
           q: parts.join(' and '),
-          fields: String(input.fields || 'files(id,name,mimeType,modifiedTime)'),
+          pageSize: String(limit),
+          fields: String(input.fields || 'files(id,name,mimeType,modifiedTime,webViewLink)'),
         };
       },
       responseMapper: (data: any) => data.files || [],
       inputSchema: {
         type: 'object',
         properties: {
-          fileName: { type: 'string', description: 'File name to search for' },
+          query: { type: 'string', description: 'Search query text (file name or keyword)' },
+          fileName: { type: 'string', description: 'File name to search for (alias for query)' },
           mimeType: { type: 'string', description: 'MIME type filter' },
-          fields: { type: 'string', description: 'Fields to return (default: files(id,name,mimeType,modifiedTime))' },
+          maxResults: { type: 'number', description: 'Maximum results (default: 10)' },
+          fields: { type: 'string', description: 'Fields to return' },
         },
       },
       outputSchema: {
@@ -284,9 +309,14 @@ export class ProxyActionRegistry {
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
       paramsBuilder: (input) => {
+        // Build Gmail search query from various possible input params
+        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'search', 'keyword', 'keywords', 'subject');
         const params: Record<string, string> = {};
-        if (input.query) params.q = String(input.query);
-        if (input.maxResults) params.maxResults = String(input.maxResults);
+        if (searchText) params.q = searchText;
+        if (input.from) params.q = `${params.q || ''} from:${input.from}`.trim();
+        if (input.to) params.q = `${params.q || ''} to:${input.to}`.trim();
+        const limit = ProxyActionRegistry.extractLimit(input);
+        params.maxResults = String(limit);
         if (input.labelIds) params.labelIds = String(input.labelIds);
         return params;
       },
@@ -295,7 +325,10 @@ export class ProxyActionRegistry {
         type: 'object',
         properties: {
           query: { type: 'string', description: 'Gmail search query (e.g., "from:user@example.com subject:invoice")' },
-          maxResults: { type: 'number', description: 'Maximum number of results' },
+          keyword: { type: 'string', description: 'Search keyword (alias for query)' },
+          from: { type: 'string', description: 'Filter by sender email address' },
+          to: { type: 'string', description: 'Filter by recipient email address' },
+          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)' },
           labelIds: { type: 'string', description: 'Comma-separated label IDs to filter by' },
         },
       },
@@ -310,8 +343,8 @@ export class ProxyActionRegistry {
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
       paramsBuilder: (input) => {
-        const params: Record<string, string> = {};
-        if (input.maxResults) params.maxResults = String(input.maxResults);
+        const limit = ProxyActionRegistry.extractLimit(input);
+        const params: Record<string, string> = { maxResults: String(limit) };
         return params;
       },
       responseMapper: (data: any) => data.messages || [],
@@ -396,9 +429,8 @@ export class ProxyActionRegistry {
       method: 'GET',
       endpoint: '/conversations.list',
       paramsBuilder: (input) => {
-        const params: Record<string, string> = { types: 'public_channel,private_channel' };
-        if (input.limit) params.limit = String(input.limit);
-        return params;
+        const limit = ProxyActionRegistry.extractLimit(input);
+        return { types: 'public_channel,private_channel', limit: String(limit) };
       },
       responseMapper: (data: any) => data.channels || [],
       inputSchema: {
@@ -423,10 +455,13 @@ export class ProxyActionRegistry {
       endpoint: '/v1/search',
       headersBuilder: () => ({ 'Notion-Version': '2022-06-28' }),
       bodyBuilder: (input) => {
+        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'search', 'keyword');
         const body: Record<string, unknown> = {};
-        if (input.query) body.query = input.query;
+        if (searchText) body.query = searchText;
         if (input.filter) body.filter = input.filter;
         if (input.sort) body.sort = input.sort;
+        const limit = ProxyActionRegistry.extractLimit(input);
+        body.page_size = limit;
         return body;
       },
       responseMapper: (data: any) => data.results || [],
@@ -471,9 +506,9 @@ export class ProxyActionRegistry {
       method: 'GET',
       endpoint: '/user/repos',
       paramsBuilder: (input) => {
-        const params: Record<string, string> = {};
+        const limit = ProxyActionRegistry.extractLimit(input);
+        const params: Record<string, string> = { per_page: String(limit) };
         if (input.sort) params.sort = String(input.sort);
-        if (input.per_page) params.per_page = String(input.per_page);
         if (input.type) params.type = String(input.type);
         return params;
       },
@@ -496,10 +531,11 @@ export class ProxyActionRegistry {
       method: 'GET',
       endpoint: '/search/issues',
       paramsBuilder: (input) => {
-        const params: Record<string, string> = {};
-        if (input.query) params.q = String(input.query);
+        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'search', 'keyword');
+        const limit = ProxyActionRegistry.extractLimit(input);
+        const params: Record<string, string> = { per_page: String(limit) };
+        if (searchText) params.q = searchText;
         if (input.sort) params.sort = String(input.sort);
-        if (input.per_page) params.per_page = String(input.per_page);
         return params;
       },
       responseMapper: (data: any) => data.items || [],

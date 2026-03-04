@@ -56,6 +56,16 @@ export interface WorkflowResultItem {
   data: unknown;
 }
 
+export type NextActionType = 'schedule' | 'actions_on_data' | 'save';
+
+export interface NextActionsData {
+  agentId: string;
+  runId: string;
+  workflowName?: string;
+  dismissed?: boolean;
+  selectedActions?: NextActionType[];
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -67,6 +77,7 @@ export interface ChatMessage {
   toolResult?: ToolResultData;
   planPreview?: PlanPreviewData;
   workflowResults?: WorkflowResultItem[];
+  nextActions?: NextActionsData;
   agentId?: string;
   runId?: string;
   elapsedMs?: number;

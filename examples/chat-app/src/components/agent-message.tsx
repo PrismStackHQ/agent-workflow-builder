@@ -1,17 +1,20 @@
 'use client';
 
-import type { ChatMessage, PlanPreviewData } from '@/lib/types';
+import type { ChatMessage, NextActionType, NextActionsData, PlanPreviewData } from '@/lib/types';
 import { StepIndicator } from './step-indicator';
 import { ConnectionCard } from './connection-card';
 import { ToolResult } from './tool-result';
 import { ThinkingIndicator } from './thinking-indicator';
 import { PlanPreviewCard } from './plan-preview-card';
 import { WorkflowResultCard } from './workflow-result-card';
+import { NextActionsCard } from './next-actions-card';
 
 interface AgentMessageProps {
   message: ChatMessage;
   onOAuthConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
   onPlanConfirm?: (plan: PlanPreviewData) => void;
+  onNextAction?: (actionType: NextActionType, data: NextActionsData) => void;
+  onDismissNextActions?: () => void;
 }
 
 function formatElapsed(ms: number): string {
@@ -23,7 +26,7 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-export function AgentMessage({ message, onOAuthConnect, onPlanConfirm }: AgentMessageProps) {
+export function AgentMessage({ message, onOAuthConnect, onPlanConfirm, onNextAction, onDismissNextActions }: AgentMessageProps) {
   const isProcessing = message.status === 'processing';
   const isError = message.status === 'error';
 
@@ -82,8 +85,17 @@ export function AgentMessage({ message, onOAuthConnect, onPlanConfirm }: AgentMe
           <WorkflowResultCard results={message.workflowResults} />
         )}
 
-        {/* Thinking indicator */}
-        {isProcessing && !message.steps?.some((s) => s.status === 'running') && !message.connectionCard && !message.planPreview && (
+        {/* Next actions card */}
+        {message.nextActions && !message.nextActions.dismissed && onNextAction && onDismissNextActions && (
+          <NextActionsCard
+            data={message.nextActions}
+            onAction={onNextAction}
+            onDismiss={onDismissNextActions}
+          />
+        )}
+
+        {/* Thinking indicator — only show when processing with no visible activity */}
+        {isProcessing && (!message.steps || message.steps.length === 0) && !message.connectionCard && !message.planPreview && (
           <ThinkingIndicator />
         )}
       </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { wsClient } from '@/lib/ws';
-import type { ChatMessage, ChatStep, PlanPreviewData, WorkflowResultItem, WsServerMessage } from '@/lib/types';
+import type { ChatMessage, ChatStep, NextActionType, NextActionsData, PlanPreviewData, WorkflowResultItem, WsServerMessage } from '@/lib/types';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 11);
@@ -349,6 +349,11 @@ export function useAgentChat() {
             runId: p.runId as string,
             elapsedMs: elapsed,
             workflowResults: collectedResults.length > 0 ? collectedResults : undefined,
+            nextActions: {
+              agentId: p.agentId as string,
+              runId: p.runId as string,
+              workflowName: (p.name as string) || undefined,
+            },
             steps: [
               {
                 id: uid(),
@@ -537,12 +542,12 @@ export function useAgentChat() {
     (plan: PlanPreviewData) => {
       pendingPlanRef.current = null;
 
+      // Always run as manual on initial confirm — scheduling is offered as a post-run option
       wsClient.send('agent_plan_confirm', {
         commandId: plan.commandId,
         name: plan.name,
         naturalLanguageCommand: plan.naturalLanguageCommand,
-        triggerType: plan.triggerType,
-        schedule: plan.schedule,
+        triggerType: 'manual',
         connectors: plan.connectors,
         steps: plan.steps,
         endUserId: plan.endUserId,
@@ -560,6 +565,76 @@ export function useAgentChat() {
     [addMessage],
   );
 
+  const handleNextAction = useCallback(
+    (actionType: NextActionType, data: NextActionsData) => {
+      switch (actionType) {
+        case 'schedule':
+          addMessage({
+            id: uid(),
+            role: 'user',
+            content: 'Schedule this workflow',
+            timestamp: new Date(),
+            status: 'complete',
+          });
+          wsClient.submitCommand(
+            `Schedule the workflow "${data.workflowName || 'this workflow'}" to run on a recurring schedule`,
+            process.env.NEXT_PUBLIC_END_USER_ID,
+          );
+          break;
+
+        case 'actions_on_data':
+          addMessage({
+            id: uid(),
+            role: 'user',
+            content: 'Take actions on the results',
+            timestamp: new Date(),
+            status: 'complete',
+          });
+          // Prompt the user to describe what action they want
+          addMessage({
+            id: uid(),
+            role: 'agent',
+            content: 'What would you like to do with the results? For example: summarize, download, send via email, update records, etc.',
+            timestamp: new Date(),
+            status: 'complete',
+          });
+          break;
+
+        case 'save':
+          addMessage({
+            id: uid(),
+            role: 'user',
+            content: 'Save this workflow',
+            timestamp: new Date(),
+            status: 'complete',
+          });
+          addMessage({
+            id: uid(),
+            role: 'agent',
+            content: 'Workflow saved! You can run it again anytime from your saved workflows.',
+            timestamp: new Date(),
+            status: 'complete',
+            steps: [{ id: uid(), label: 'Workflow saved', status: 'completed', icon: 'check' }],
+          });
+          break;
+      }
+
+      // Dismiss the next actions card on the message that triggered it
+      dismissNextActions();
+    },
+    [addMessage],
+  );
+
+  const dismissNextActions = useCallback(() => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.nextActions && !msg.nextActions.dismissed
+          ? { ...msg, nextActions: { ...msg.nextActions, dismissed: true } }
+          : msg,
+      ),
+    );
+  }, []);
+
   const clearMessages = useCallback(() => {
     setMessages([]);
     setProcessing(false);
@@ -576,5 +651,7 @@ export function useAgentChat() {
     handleOAuthComplete,
     confirmPlan,
     clearMessages,
+    handleNextAction,
+    dismissNextActions,
   };
 }

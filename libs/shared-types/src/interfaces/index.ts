@@ -7,7 +7,7 @@ export interface AgentStep {
 
 export interface ParsedIntent {
   trigger: {
-    type: 'cron' | 'event';
+    type: 'cron' | 'event' | 'manual';
     schedule?: string;
     event?: string;
   };

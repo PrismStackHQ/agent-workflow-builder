@@ -248,7 +248,7 @@ export class NangoProvider implements IIntegrationProvider {
       }
 
       this.logger.log(
-        `Nango proxy ${config.method} ${endpoint} [${config.actionType}] for ${providerConfigKey}`,
+        `Nango proxy ${config.method} ${endpoint} [${config.actionType}] for ${providerConfigKey} | input: ${JSON.stringify(input)} | url: ${fullUrl}`,
       );
 
       const res = await fetch(fullUrl, fetchOptions);

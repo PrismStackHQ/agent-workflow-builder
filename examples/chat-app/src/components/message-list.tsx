@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { ChatMessage, PlanPreviewData } from '@/lib/types';
+import type { ChatMessage, NextActionType, NextActionsData, PlanPreviewData } from '@/lib/types';
 import { UserMessage } from './user-message';
 import { AgentMessage } from './agent-message';
 
@@ -9,9 +9,11 @@ interface MessageListProps {
   messages: ChatMessage[];
   onOAuthConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
   onPlanConfirm?: (plan: PlanPreviewData) => void;
+  onNextAction?: (actionType: NextActionType, data: NextActionsData) => void;
+  onDismissNextActions?: () => void;
 }
 
-export function MessageList({ messages, onOAuthConnect, onPlanConfirm }: MessageListProps) {
+export function MessageList({ messages, onOAuthConnect, onPlanConfirm, onNextAction, onDismissNextActions }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,7 +60,16 @@ export function MessageList({ messages, onOAuthConnect, onPlanConfirm }: Message
           return <UserMessage key={msg.id} message={msg} />;
         }
         if (msg.role === 'agent') {
-          return <AgentMessage key={msg.id} message={msg} onOAuthConnect={onOAuthConnect} onPlanConfirm={onPlanConfirm} />;
+          return (
+            <AgentMessage
+              key={msg.id}
+              message={msg}
+              onOAuthConnect={onOAuthConnect}
+              onPlanConfirm={onPlanConfirm}
+              onNextAction={onNextAction}
+              onDismissNextActions={onDismissNextActions}
+            />
+          );
         }
         // System messages
         return (

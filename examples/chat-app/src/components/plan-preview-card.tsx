@@ -30,12 +30,7 @@ export function PlanPreviewCard({ plan, onConfirm }: PlanPreviewCardProps) {
     onConfirm(plan);
   };
 
-  const triggerLabel =
-    plan.triggerType === 'cron' && plan.schedule
-      ? `Scheduled: ${plan.schedule}`
-      : plan.triggerType === 'event'
-        ? 'Trigger: On event'
-        : 'Trigger: Manual';
+  const triggerLabel = 'Run once now';
 
   return (
     <div className="animate-slide-up my-3">
