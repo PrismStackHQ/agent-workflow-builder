@@ -95,6 +95,16 @@ export interface ProxyActionConfig {
    */
   responseMapper?: (data: unknown) => unknown;
 
+  /**
+   * Optional async post-processor that runs after responseMapper.
+   * Receives the mapped data and a proxy fetch helper to make follow-up
+   * API calls (e.g., enriching search result IDs with full details).
+   */
+  postProcessor?: (
+    data: unknown,
+    proxyFetch: (method: string, endpoint: string, params?: Record<string, string>) => Promise<unknown>,
+  ) => Promise<unknown>;
+
   /** JSON schema describing required input parameters. */
   inputSchema?: Record<string, unknown>;
 

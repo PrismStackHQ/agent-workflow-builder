@@ -245,6 +245,8 @@ export class ProxyActionRegistry {
     this.registerAlias('email_details', 'get_email');
     this.registerAlias('read_email', 'get_email');
     this.registerAlias('download_attachment', 'get_attachment');
+    this.registerAlias('send-email', 'send_email');
+    this.registerAlias('compose_email', 'send_email');
 
     // Slack aliases
     this.registerAlias('send_message', 'post_message');
@@ -303,7 +305,7 @@ export class ProxyActionRegistry {
         return {
           q: parts.join(' and '),
           pageSize: String(limit),
-          fields: String(input.fields || 'files(id,name,mimeType,modifiedTime,webViewLink)'),
+          fields: 'files(id,name,mimeType,modifiedTime,webViewLink)',
         };
       },
       responseMapper: (data: any) => data.files || [],
@@ -314,7 +316,6 @@ export class ProxyActionRegistry {
           fileName: { type: 'string', description: 'File name to search for (alias for query)' },
           mimeType: { type: 'string', description: 'MIME type filter' },
           maxResults: { type: 'number', description: 'Maximum results (default: 10)' },
-          fields: { type: 'string', description: 'Fields to return' },
         },
       },
       outputSchema: {
@@ -470,6 +471,35 @@ export class ProxyActionRegistry {
         return params;
       },
       responseMapper: (data: any) => data.messages || [],
+      postProcessor: async (data: unknown, proxyFetch) => {
+        // Auto-enrich: fetch metadata (subject, from, date) for each message ID
+        const messages = data as Array<{ id: string; threadId: string }>;
+        if (!Array.isArray(messages) || messages.length === 0) return messages;
+        const enriched = await Promise.all(
+          messages.slice(0, 10).map(async (msg) => {
+            try {
+              const detail: any = await proxyFetch(
+                'GET',
+                `/gmail/v1/users/me/messages/${msg.id}`,
+                { format: 'metadata', metadataHeaders: 'Subject,From,Date' },
+              );
+              const headers = detail?.payload?.headers || [];
+              const getH = (n: string) => headers.find((h: any) => h.name.toLowerCase() === n.toLowerCase())?.value || '';
+              return {
+                id: msg.id,
+                threadId: msg.threadId,
+                subject: getH('Subject'),
+                from: getH('From'),
+                date: getH('Date'),
+                snippet: detail?.snippet || '',
+              };
+            } catch {
+              return { id: msg.id, threadId: msg.threadId, subject: '', from: '', date: '', snippet: '' };
+            }
+          }),
+        );
+        return enriched;
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -483,12 +513,16 @@ export class ProxyActionRegistry {
       },
       outputSchema: {
         type: 'array',
-        description: 'Array of message ID objects. IMPORTANT: These are IDs only — use get_email to fetch full content (subject, body, attachments) for each message.',
+        description: 'Array of email summaries with subject, from, date, and snippet.',
         items: {
           type: 'object',
           properties: {
             id: { type: 'string', description: 'Message ID — pass to get_email to get full content' },
             threadId: { type: 'string' },
+            subject: { type: 'string', description: 'Email subject line' },
+            from: { type: 'string', description: 'Sender name and email' },
+            date: { type: 'string', description: 'Date the email was sent' },
+            snippet: { type: 'string', description: 'Short preview of the email body' },
           },
         },
       },
@@ -508,6 +542,34 @@ export class ProxyActionRegistry {
         return params;
       },
       responseMapper: (data: any) => data.messages || [],
+      postProcessor: async (data: unknown, proxyFetch) => {
+        const messages = data as Array<{ id: string; threadId: string }>;
+        if (!Array.isArray(messages) || messages.length === 0) return messages;
+        const enriched = await Promise.all(
+          messages.slice(0, 10).map(async (msg) => {
+            try {
+              const detail: any = await proxyFetch(
+                'GET',
+                `/gmail/v1/users/me/messages/${msg.id}`,
+                { format: 'metadata', metadataHeaders: 'Subject,From,Date' },
+              );
+              const headers = detail?.payload?.headers || [];
+              const getH = (n: string) => headers.find((h: any) => h.name.toLowerCase() === n.toLowerCase())?.value || '';
+              return {
+                id: msg.id,
+                threadId: msg.threadId,
+                subject: getH('Subject'),
+                from: getH('From'),
+                date: getH('Date'),
+                snippet: detail?.snippet || '',
+              };
+            } catch {
+              return { id: msg.id, threadId: msg.threadId, subject: '', from: '', date: '', snippet: '' };
+            }
+          }),
+        );
+        return enriched;
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -616,15 +678,44 @@ export class ProxyActionRegistry {
       actionName: 'send_email',
       actionType: 'SEND',
       displayName: 'Send Email',
-      description: 'Send an email via Gmail',
+      description: 'Send an email via Gmail. Accepts to, subject, and body — automatically builds the email.',
       method: 'POST',
       endpoint: '/gmail/v1/users/me/messages/send',
-      bodyBuilder: (input) => ({ raw: input.raw }),
+      bodyBuilder: (input) => {
+        // If raw is provided directly, use it as-is
+        if (input.raw && !input.to) {
+          return { raw: input.raw };
+        }
+        // Build RFC 2822 message from simple params and base64url-encode it
+        const to = String(input.to || '');
+        const subject = String(input.subject || '(no subject)');
+        const body = String(input.body || input.text || input.content || '');
+        const cc = input.cc ? `Cc: ${input.cc}\r\n` : '';
+        const message = `To: ${to}\r\n${cc}Subject: ${subject}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
+        // Base64url encode (Node.js Buffer)
+        const raw = Buffer.from(message)
+          .toString('base64')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+        return { raw };
+      },
       inputSchema: {
         type: 'object',
-        required: ['raw'],
+        required: ['to', 'subject', 'body'],
         properties: {
-          raw: { type: 'string', description: 'Base64url-encoded email message (RFC 2822)' },
+          to: { type: 'string', description: 'Recipient email address' },
+          subject: { type: 'string', description: 'Email subject line' },
+          body: { type: 'string', description: 'Plain text email body content' },
+          cc: { type: 'string', description: 'CC recipient email address (optional)' },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'ID of the sent message' },
+          threadId: { type: 'string' },
+          labelIds: { type: 'array', items: { type: 'string' } },
         },
       },
     });

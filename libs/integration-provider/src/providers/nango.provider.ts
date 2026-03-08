@@ -215,9 +215,14 @@ export class NangoProvider implements IIntegrationProvider {
       // Resolve {{param}} template placeholders in the endpoint path
       let endpoint = config.endpoint;
       endpoint = endpoint.replace(/\{\{(\w+)\}\}/g, (_, paramName) => {
-        const value = input[paramName];
+        let value = input[paramName];
         if (value === undefined) {
           throw new Error(`Missing required path parameter: ${paramName}`);
+        }
+        // If value is an array (e.g. from a map() pipe), use only the first element
+        if (Array.isArray(value)) {
+          this.logger.warn(`Path param "${paramName}" is an array (${value.length} items), using first element`);
+          value = value[0];
         }
         return encodeURIComponent(String(value));
       });
@@ -264,7 +269,19 @@ export class NangoProvider implements IIntegrationProvider {
       }
 
       // Apply response mapper if defined
-      const mapped = config.responseMapper ? config.responseMapper(data) : data;
+      let mapped = config.responseMapper ? config.responseMapper(data) : data;
+
+      // Apply post-processor for enrichment (e.g., fetching full details for search result IDs)
+      if (config.postProcessor) {
+        const proxyFetch = async (method: string, ep: string, params?: Record<string, string>) => {
+          const qs = params ? new URLSearchParams(params).toString() : '';
+          const url = qs ? `${nangoBase}/proxy${ep}?${qs}` : `${nangoBase}/proxy${ep}`;
+          const r = await fetch(url, { method, headers });
+          return r.json();
+        };
+        mapped = await config.postProcessor(mapped, proxyFetch);
+      }
+
       return { success: true, data: mapped, statusCode: res.status };
     } catch (err) {
       this.logger.error(`Failed to execute Nango proxy ${config.actionName}: ${err}`);

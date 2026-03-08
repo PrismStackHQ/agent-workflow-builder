@@ -223,27 +223,50 @@ export class LlmPlannerService {
               .describe('The integration connector key to check'),
           }),
           execute: async ({ integrationKey }) => {
-            const where: Record<string, unknown> = {
+            // Try exact match first
+            const baseWhere: Record<string, unknown> = {
               workspaceId,
-              provider: integrationKey,
               status: 'READY',
             };
-            if (endUserId) {
-              where.externalRefId = endUserId;
-            }
-            const connection = await this.prisma.connectionRef.findFirst({
-              where,
-              select: {
-                id: true,
-                provider: true,
-                externalRefId: true,
-                connectionId: true,
-                status: true,
-              },
+            if (endUserId) baseWhere.externalRefId = endUserId;
+
+            const exact = await this.prisma.connectionRef.findFirst({
+              where: { ...baseWhere, provider: integrationKey },
+              select: { id: true, connectionId: true },
             });
-            return connection
-              ? { connected: true, connectionId: connection.connectionId || connection.id }
-              : { connected: false };
+            if (exact?.connectionId) {
+              return { connected: true, connectionId: exact.connectionId || exact.id };
+            }
+
+            // Resolve via AvailableIntegration (dynamic — no hardcoded mappings)
+            const availableIntegrations = await this.prisma.availableIntegration.findMany({
+              where: { workspaceId },
+              select: { providerKey: true, displayName: true, rawMetadata: true },
+            });
+            const keyLower = integrationKey.toLowerCase();
+            const matched = availableIntegrations.find((ai) => {
+              const meta = ai.rawMetadata as Record<string, unknown> | null;
+              const nangoProvider = ((meta?.provider as string) || '').toLowerCase();
+              const displayLower = ai.displayName.toLowerCase().replace(/\s*\(.*\)/, '').replace(/\s+/g, '-');
+              return (
+                ai.providerKey.toLowerCase() === keyLower ||
+                nangoProvider === keyLower ||
+                displayLower === keyLower ||
+                keyLower.includes(nangoProvider) ||
+                nangoProvider.includes(keyLower)
+              );
+            });
+            if (matched) {
+              const ref = await this.prisma.connectionRef.findFirst({
+                where: { ...baseWhere, provider: matched.providerKey },
+                select: { id: true, connectionId: true },
+              });
+              if (ref?.connectionId) {
+                return { connected: true, connectionId: ref.connectionId || ref.id };
+              }
+            }
+
+            return { connected: false };
           },
         }),
 
