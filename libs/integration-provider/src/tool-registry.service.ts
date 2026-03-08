@@ -66,8 +66,40 @@ export class ToolRegistryService {
     const proxyConfigs = this.proxyRegistry.getAll();
     if (proxyConfigs.length === 0) return 0;
 
+    // Load AvailableIntegration to resolve proxy provider keys to actual Nango provider keys.
+    // e.g., proxy uses "gmail" but Nango integration key is "google-mail"
+    const availableIntegrations = await this.prisma.availableIntegration.findMany({
+      where: { workspaceId },
+      select: { providerKey: true, displayName: true, rawMetadata: true },
+    });
+
+    // Build a lookup: proxy canonical key → Nango provider key
+    // Uses rawMetadata.provider (e.g., "google-mail" has provider "google-mail",
+    // "google-drive-4" has provider "google-drive") to match proxy keys
+    const proxyToNangoKey = new Map<string, string>();
+    for (const ai of availableIntegrations) {
+      const meta = ai.rawMetadata as Record<string, unknown> | null;
+      const nangoProvider = (meta?.provider as string) || '';
+      const displayLower = ai.displayName.toLowerCase();
+
+      // Map by provider field (e.g., "google-drive" → "google-drive-4")
+      if (nangoProvider) {
+        proxyToNangoKey.set(nangoProvider, ai.providerKey);
+      }
+
+      // Map by display name keyword (e.g., "Gmail" → google-mail)
+      // Extract service name: "gmail" from "Gmail", "slack" from "Slack"
+      const serviceKeyword = displayLower.replace(/\s*\(.*\)/, '').replace(/\s+/g, '-');
+      proxyToNangoKey.set(serviceKeyword, ai.providerKey);
+    }
+
+    this.logger.log(`Proxy-to-Nango key mappings: ${JSON.stringify(Object.fromEntries(proxyToNangoKey))}`);
+
     let count = 0;
     for (const config of proxyConfigs) {
+      // Resolve to the actual Nango provider key from AvailableIntegration
+      const resolvedKey = proxyToNangoKey.get(config.providerConfigKey) || config.providerConfigKey;
+
       await this.prisma.toolRegistryEntry.upsert({
         where: {
           workspaceId_integrationProvider_actionName: {
@@ -77,6 +109,7 @@ export class ToolRegistryService {
           },
         },
         update: {
+          integrationKey: resolvedKey,
           displayName: config.displayName,
           description: config.description,
           inputSchema: (config.inputSchema || undefined) as any,
@@ -93,7 +126,7 @@ export class ToolRegistryService {
         create: {
           workspaceId,
           integrationProvider: integrationProvider as any,
-          integrationKey: config.providerConfigKey,
+          integrationKey: resolvedKey,
           actionName: config.actionName,
           displayName: config.displayName,
           description: config.description,

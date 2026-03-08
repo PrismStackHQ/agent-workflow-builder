@@ -165,6 +165,7 @@ export interface AgentRunStepCompletedEvent {
   runId: string;
   stepIndex: number;
   stepName: string;
+  stepDescription?: string;
   result?: unknown;
 }
 

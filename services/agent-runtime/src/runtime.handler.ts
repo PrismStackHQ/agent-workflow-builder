@@ -25,7 +25,8 @@ export class RuntimeHandler implements OnModuleInit {
       SUBJECTS.SCHEDULER_RUN_TRIGGERED,
       'runtime-run-triggered',
       async (data) => {
-        this.logger.log(`Run triggered for agent ${data.agentId}, workspace ${data.workspaceId}`);
+        this.logger.log(`Run triggered for agent ${data.agentId}, workspace ${data.workspaceId}, endUser=${data.endUserConnectionId || 'none'}`);
+        this.logger.log(`Full trigger payload: ${JSON.stringify(data)}`);
         try {
           await this.runtime.executeRun(data.agentId, data.orgId, data.workspaceId, data.endUserConnectionId);
         } catch (err) {

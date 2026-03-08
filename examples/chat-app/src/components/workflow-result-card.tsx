@@ -226,7 +226,7 @@ export function WorkflowResultCard({ results }: { results: WorkflowResultItem[] 
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-sm text-surface-700">
-                      {formatStepName(result.stepName)}
+                      {result.description || formatStepName(result.stepName)}
                     </span>
                     {itemCount !== null && (
                       <span className="ml-2 text-xs text-surface-400">

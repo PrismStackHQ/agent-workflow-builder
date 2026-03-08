@@ -314,19 +314,21 @@ export function useAgentChat() {
           const stepResult = p.result;
           const stepIndex = p.stepIndex as number;
           const stepName = (p.stepName as string) || `Step ${stepIndex}`;
+          const stepDescription = p.stepDescription as string | undefined;
 
           // Accumulate step results for the final results card
           if (stepResult !== undefined && stepResult !== null) {
             runResultsRef.current.push({
               stepIndex,
               stepName,
+              description: stepDescription,
               data: stepResult,
             });
           }
 
           addStepToLastAgent({
             id: uid(),
-            label: stepName,
+            label: stepDescription || stepName,
             status: 'completed',
             icon: 'check',
           });

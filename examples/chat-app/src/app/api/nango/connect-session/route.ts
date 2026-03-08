@@ -23,10 +23,24 @@ export async function POST(req: Request) {
     );
   }
 
-  const res = await nango.createConnectSession({
-    end_user: { id: endUserId },
-    allowed_integrations: [integrationKey],
-  });
+  try {
+    // integrationKey is already the Nango provider key (resolved from AvailableIntegration)
+    const res = await nango.createConnectSession({
+      end_user: {
+        id: endUserId,
+        email: `${endUserId}@placeholder.local`,
+        display_name: endUserId,
+      },
+      allowed_integrations: [integrationKey],
+    } as any);
 
-  return NextResponse.json({ connectSession: res.data.token });
+    return NextResponse.json({ connectSession: res.data.token });
+  } catch (err: any) {
+    const detail = err?.response?.data || err?.message || String(err);
+    console.error('Nango createConnectSession error:', JSON.stringify(detail));
+    return NextResponse.json(
+      { error: 'Failed to create connect session', detail },
+      { status: 500 },
+    );
+  }
 }

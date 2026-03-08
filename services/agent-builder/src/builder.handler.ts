@@ -69,6 +69,11 @@ export class BuilderHandler implements OnModuleInit {
               ? data.naturalLanguageCommand.substring(0, 47) + '...'
               : data.naturalLanguageCommand;
 
+          this.logger.log(`Parsed intent: trigger=${JSON.stringify(intent.trigger)}, connectors=${JSON.stringify(intent.connectors)}`);
+          for (const step of intent.steps) {
+            this.logger.log(`  Step ${step.index}: action="${step.action}" connector="${step.connector}" params=${JSON.stringify(step.params)} desc="${step.description || ''}"`);
+          }
+
           // Publish plan preview — don't create agent yet
           await this.nats.publish(SUBJECTS.AGENT_PLAN_PREVIEW, {
             orgId: data.orgId,
@@ -99,11 +104,15 @@ export class BuilderHandler implements OnModuleInit {
       'agent-builder-plan-confirmed',
       async (data) => {
         this.logger.log(`Plan confirmed for command ${data.commandId} in workspace ${data.workspaceId}`);
+        this.logger.log(`Confirmed plan: triggerType="${data.triggerType}" connectors=${JSON.stringify(data.connectors)}`);
+        for (const step of data.steps) {
+          this.logger.log(`  Confirmed step ${step.index}: action="${step.action}" connector="${step.connector}" params=${JSON.stringify(step.params)}`);
+        }
 
         try {
           const intent: ParsedIntent = {
             trigger: {
-              type: data.triggerType as 'cron' | 'event',
+              type: data.triggerType as 'cron' | 'event' | 'manual',
               schedule: data.schedule,
             },
             connectors: data.connectors,

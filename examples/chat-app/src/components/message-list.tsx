@@ -36,9 +36,9 @@ export function MessageList({ messages, onOAuthConnect, onPlanConfirm, onNextAct
           </p>
           <div className="mt-6 flex flex-wrap gap-2 justify-center">
             {[
-              'Find invoices from my Google Drive',
-              'Summarize my unread emails daily',
-              'Save email attachments to Drive',
+              'Find emails about invoices from Gmail',
+              'Search Gmail for receipts and save to a Drive folder',
+              'Find files in Google Drive named reports',
             ].map((suggestion) => (
               <span
                 key={suggestion}

@@ -19,6 +19,7 @@
     "clean": "rm -rf node_modules libs/*/node_modules services/*/node_modules frontend/*/node_modules"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.24",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   }

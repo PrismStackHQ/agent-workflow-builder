@@ -76,28 +76,18 @@ export class TemplateMatcherService {
 
       const bestAction = this.findBestAction(command, available);
 
-      if (bestAction) {
-        steps.push({
-          index: stepIndex++,
-          action: bestAction.actionName,
-          connector,
-          params: { command },
-        });
-        this.logger.log(
-          `Matched action: ${bestAction.actionName} (${bestAction.displayName}) for connector ${connector}`,
-        );
-      } else {
-        // Use the first available action as a fallback
-        steps.push({
-          index: stepIndex++,
-          action: available[0].actionName,
-          connector,
-          params: { command },
-        });
-        this.logger.log(
-          `No strong match for connector ${connector}, using default: ${available[0].actionName}`,
-        );
-      }
+      const actionName = bestAction ? bestAction.actionName : available[0].actionName;
+      const params = this.extractParams(command, actionName);
+
+      steps.push({
+        index: stepIndex++,
+        action: actionName,
+        connector,
+        params,
+      });
+      this.logger.log(
+        `Matched action: ${actionName} for connector ${connector}, params: ${JSON.stringify(params)}`,
+      );
     }
 
     return steps;
@@ -159,5 +149,36 @@ export class TemplateMatcherService {
     }
 
     return bestScore >= 2 ? bestAction : null;
+  }
+
+  /**
+   * Extract meaningful params from the command based on the matched action type,
+   * instead of passing the raw command string.
+   */
+  private extractParams(command: string, actionName: string): Record<string, unknown> {
+    const quoted = [...command.matchAll(/"([^"]+)"|'([^']+)'/g)].map((m) => m[1] || m[2]);
+    const namedMatch = command.match(/(?:named|called|titled)\s+["']?(\w[\w\s]*?)["']?(?:\s+and|\s+from|\s+to|\s+in|\s+on|$)/i);
+
+    if (/search|find|list|get|fetch|query/.test(actionName)) {
+      const aboutMatch = command.match(
+        /(?:with\s+name|named|called|about|for|keyword)\s+["']?(\w[\w\s]*?)["']?(?:\s+and|\s+from|\s+to|\s+in|\s+on|$)/i,
+      );
+      return { query: aboutMatch?.[1]?.trim() || quoted[0] || command };
+    }
+
+    if (/create_folder|create_directory|mkdir|new_folder/.test(actionName)) {
+      return { folderName: namedMatch?.[1]?.trim() || quoted[0] || 'New Folder' };
+    }
+
+    if (/upload|copy_file|save_file/.test(actionName)) {
+      return { fileName: namedMatch?.[1]?.trim() || quoted[0] || 'uploaded_file' };
+    }
+
+    if (/send|post_message/.test(actionName)) {
+      const textMatch = command.match(/(?:saying|message|text)\s+["']?(.+?)["']?(?:\s+to|\s+on|$)/i);
+      return { text: textMatch?.[1]?.trim() || quoted[0] || command };
+    }
+
+    return { query: command };
   }
 }

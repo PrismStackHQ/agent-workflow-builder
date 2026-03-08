@@ -44,6 +44,14 @@ export class ProxyActionRegistry {
    */
   private readonly actionAliases = new Map<string, string>();
 
+  /**
+   * Maps Nango integration key variants to canonical proxy provider keys.
+   * e.g., "google-mail" → "gmail", "google-drive-4" → "google-drive"
+   * This bridges the gap between Nango integration keys (used in the tool registry)
+   * and the short names used when registering proxy actions.
+   */
+  private readonly providerAliases = new Map<string, string>();
+
   constructor() {
     this.registerDefaults();
   }
@@ -53,13 +61,13 @@ export class ProxyActionRegistry {
   }
 
   /**
-   * Normalizes a Nango provider config key by stripping the trailing
-   * numeric suffix (e.g., "google-drive-4" → "google-drive").
-   * Nango appends a number when multiple integrations of the same
-   * provider are configured.
+   * Normalizes a Nango provider config key:
+   * 1. Strip trailing numeric suffix (e.g., "google-drive-4" → "google-drive")
+   * 2. Check provider aliases (e.g., "google-mail" → "gmail")
    */
   private normalizeProviderKey(providerConfigKey: string): string {
-    return providerConfigKey.replace(/-\d+$/, '');
+    const stripped = providerConfigKey.replace(/-\d+$/, '');
+    return this.providerAliases.get(stripped) || this.providerAliases.get(providerConfigKey) || stripped;
   }
 
   /** Register a proxy action configuration. */
@@ -79,6 +87,14 @@ export class ProxyActionRegistry {
   }
 
   /**
+   * Register a provider key alias so that Nango integration keys
+   * (e.g., "google-mail") resolve to canonical proxy provider keys (e.g., "gmail").
+   */
+  registerProviderAlias(nangoKey: string, canonicalProviderKey: string): void {
+    this.providerAliases.set(nangoKey, canonicalProviderKey);
+  }
+
+  /**
    * Find a proxy config by provider and action name.
    *
    * Matching strategy (in order):
@@ -89,29 +105,46 @@ export class ProxyActionRegistry {
    * 5. Normalized provider key + first SEARCH action (fallback for unknown action names)
    */
   find(providerConfigKey: string, actionName: string): ProxyActionConfig | undefined {
+    this.logger.log(
+      `Proxy lookup: provider="${providerConfigKey}" action="${actionName}"`,
+    );
+
     // 1. Exact match
     const exact = this.registry.get(this.key(providerConfigKey, actionName));
-    if (exact) return exact;
+    if (exact) {
+      this.logger.log(`  → Exact match: ${this.key(providerConfigKey, actionName)}`);
+      return exact;
+    }
 
     const normalizedKey = this.normalizeProviderKey(providerConfigKey);
+    this.logger.log(`  Normalized provider key: "${providerConfigKey}" → "${normalizedKey}"`);
 
     // 2. Normalized provider key + exact action name
     const normalizedProvider = this.registry.get(this.key(normalizedKey, actionName));
-    if (normalizedProvider) return normalizedProvider;
+    if (normalizedProvider) {
+      this.logger.log(`  → Normalized match: ${this.key(normalizedKey, actionName)}`);
+      return normalizedProvider;
+    }
 
     // 3-4. Try resolved alias with both exact and normalized key
     const resolvedAction = this.actionAliases.get(actionName);
     if (resolvedAction) {
+      this.logger.log(`  Action alias: "${actionName}" → "${resolvedAction}"`);
+
       const aliasExact = this.registry.get(this.key(providerConfigKey, resolvedAction));
-      if (aliasExact) return aliasExact;
+      if (aliasExact) {
+        this.logger.log(`  → Alias exact match: ${this.key(providerConfigKey, resolvedAction)}`);
+        return aliasExact;
+      }
 
       const aliasNormalized = this.registry.get(this.key(normalizedKey, resolvedAction));
-      if (aliasNormalized) return aliasNormalized;
+      if (aliasNormalized) {
+        this.logger.log(`  → Alias normalized match: ${this.key(normalizedKey, resolvedAction)}`);
+        return aliasNormalized;
+      }
     }
 
     // 5. Fallback: find the default SEARCH action for this provider
-    //    This handles cases where the LLM generates an unrecognized action name
-    //    (e.g., "documents") that is clearly a search intent.
     const searchFallback = this.findByType(normalizedKey, 'SEARCH');
     if (searchFallback.length > 0) {
       this.logger.warn(
@@ -121,6 +154,9 @@ export class ProxyActionRegistry {
       return searchFallback[0];
     }
 
+    this.logger.warn(
+      `No proxy config found for "${providerConfigKey}::${actionName}" (normalized: "${normalizedKey}")`,
+    );
     return undefined;
   }
 
@@ -147,12 +183,39 @@ export class ProxyActionRegistry {
   // ---------------------------------------------------------------------------
 
   private registerDefaults(): void {
+    this.registerProviderAliases();
     this.registerGoogleDriveActions();
     this.registerGmailActions();
     this.registerSlackActions();
     this.registerNotionActions();
     this.registerGitHubActions();
     this.registerDefaultAliases();
+  }
+
+  /**
+   * Map Nango integration key variants to the canonical short keys
+   * used when registering proxy actions.
+   */
+  private registerProviderAliases(): void {
+    // Google Mail: Nango key "google-mail" → proxy key "gmail"
+    this.registerProviderAlias('google-mail', 'gmail');
+    this.registerProviderAlias('google-mail-2', 'gmail');
+
+    // Google Drive: Nango key "google-drive" matches proxy key already,
+    // but add common numbered variants
+    this.registerProviderAlias('google-drive-4', 'google-drive');
+    this.registerProviderAlias('google-drive-2', 'google-drive');
+    this.registerProviderAlias('google-drive-3', 'google-drive');
+    this.registerProviderAlias('gdrive', 'google-drive');
+
+    // Slack: direct match, but add common variants
+    this.registerProviderAlias('slack-2', 'slack');
+
+    // GitHub: direct match
+    this.registerProviderAlias('github-2', 'github');
+
+    // Notion: direct match
+    this.registerProviderAlias('notion-2', 'notion');
   }
 
   /**
@@ -167,11 +230,21 @@ export class ProxyActionRegistry {
     this.registerAlias('find_files', 'search_files');
     this.registerAlias('find_documents', 'search_files');
 
+    this.registerAlias('create_directory', 'create_folder');
+    this.registerAlias('new_folder', 'create_folder');
+    this.registerAlias('mkdir', 'create_folder');
+    this.registerAlias('upload', 'upload_file');
+    this.registerAlias('copy_file', 'upload_file');
+    this.registerAlias('save_file', 'upload_file');
+
     // Gmail aliases
     this.registerAlias('emails', 'search_emails');
     this.registerAlias('mail', 'search_emails');
     this.registerAlias('find_emails', 'search_emails');
     this.registerAlias('messages', 'list_emails');
+    this.registerAlias('email_details', 'get_email');
+    this.registerAlias('read_email', 'get_email');
+    this.registerAlias('download_attachment', 'get_attachment');
 
     // Slack aliases
     this.registerAlias('send_message', 'post_message');
@@ -295,6 +368,82 @@ export class ProxyActionRegistry {
         },
       },
     });
+
+    this.register({
+      providerConfigKey: 'google-drive',
+      actionName: 'create_folder',
+      actionType: 'CREATE',
+      displayName: 'Create Folder',
+      description: 'Create a new folder in Google Drive',
+      method: 'POST',
+      endpoint: '/drive/v3/files',
+      bodyBuilder: (input) => {
+        const name = String(input.folderName || input.name || 'New Folder');
+        const body: Record<string, unknown> = {
+          name,
+          mimeType: 'application/vnd.google-apps.folder',
+        };
+        if (input.parentId) body.parents = [String(input.parentId)];
+        return body;
+      },
+      responseMapper: (data: any) => ({ id: data.id, name: data.name, mimeType: data.mimeType }),
+      inputSchema: {
+        type: 'object',
+        required: ['folderName'],
+        properties: {
+          folderName: { type: 'string', description: 'Name for the new folder' },
+          parentId: { type: 'string', description: 'Parent folder ID (optional, defaults to root)' },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'ID of the created folder' },
+          name: { type: 'string' },
+          mimeType: { type: 'string' },
+        },
+      },
+    });
+
+    this.register({
+      providerConfigKey: 'google-drive',
+      actionName: 'upload_file',
+      actionType: 'CREATE',
+      displayName: 'Upload / Save File',
+      description: 'Create a file entry in Google Drive with optional text content saved as description',
+      method: 'POST',
+      endpoint: '/drive/v3/files',
+      bodyBuilder: (input) => {
+        const name = String(input.fileName || input.name || 'Untitled');
+        const body: Record<string, unknown> = { name };
+        if (input.folderId) body.parents = [String(input.folderId)];
+        if (input.mimeType) body.mimeType = String(input.mimeType);
+        if (input.description || input.content) body.description = String(input.description || input.content);
+        if (input.appProperties) body.appProperties = input.appProperties;
+        return body;
+      },
+      responseMapper: (data: any) => ({ id: data.id, name: data.name, mimeType: data.mimeType, webViewLink: data.webViewLink }),
+      inputSchema: {
+        type: 'object',
+        required: ['fileName'],
+        properties: {
+          fileName: { type: 'string', description: 'Name for the file' },
+          folderId: { type: 'string', description: 'Destination folder ID (from create_folder result)' },
+          mimeType: { type: 'string', description: 'MIME type of the file' },
+          content: { type: 'string', description: 'Text content to save as the file description' },
+          description: { type: 'string', description: 'File description (alias for content)' },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'ID of the created file' },
+          name: { type: 'string' },
+          mimeType: { type: 'string' },
+          webViewLink: { type: 'string' },
+        },
+      },
+    });
   }
 
   // -- Gmail -------------------------------------------------------------------
@@ -332,6 +481,17 @@ export class ProxyActionRegistry {
           labelIds: { type: 'string', description: 'Comma-separated label IDs to filter by' },
         },
       },
+      outputSchema: {
+        type: 'array',
+        description: 'Array of message ID objects. IMPORTANT: These are IDs only — use get_email to fetch full content (subject, body, attachments) for each message.',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Message ID — pass to get_email to get full content' },
+            threadId: { type: 'string' },
+          },
+        },
+      },
     });
 
     this.register({
@@ -361,15 +521,92 @@ export class ProxyActionRegistry {
       actionName: 'get_email',
       actionType: 'GET',
       displayName: 'Get Email',
-      description: 'Get the full content of a specific email',
+      description: 'Get the full content of a specific email including subject, body, sender, and attachment info',
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages/{{messageId}}',
       paramsBuilder: () => ({ format: 'full' }),
+      responseMapper: (data: any) => {
+        const headers = data.payload?.headers || [];
+        const getHeader = (name: string) =>
+          headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+        return {
+          id: data.id,
+          threadId: data.threadId,
+          subject: getHeader('Subject'),
+          from: getHeader('From'),
+          to: getHeader('To'),
+          date: getHeader('Date'),
+          snippet: data.snippet || '',
+          labelIds: data.labelIds || [],
+          body: data.payload?.body?.data || data.payload?.parts?.[0]?.body?.data || '',
+          hasAttachments: (data.payload?.parts || []).some(
+            (p: any) => p.filename && p.filename.length > 0,
+          ),
+          attachments: (data.payload?.parts || [])
+            .filter((p: any) => p.filename && p.filename.length > 0)
+            .map((p: any) => ({
+              filename: p.filename,
+              mimeType: p.mimeType,
+              attachmentId: p.body?.attachmentId,
+              size: p.body?.size,
+            })),
+        };
+      },
       inputSchema: {
         type: 'object',
         required: ['messageId'],
         properties: {
           messageId: { type: 'string', description: 'The ID of the email message' },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          subject: { type: 'string' },
+          from: { type: 'string' },
+          to: { type: 'string' },
+          date: { type: 'string' },
+          snippet: { type: 'string', description: 'Short preview of the email body' },
+          body: { type: 'string', description: 'Base64-encoded email body' },
+          hasAttachments: { type: 'boolean' },
+          attachments: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                filename: { type: 'string' },
+                mimeType: { type: 'string' },
+                attachmentId: { type: 'string' },
+                size: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.register({
+      providerConfigKey: 'gmail',
+      actionName: 'get_attachment',
+      actionType: 'DOWNLOAD',
+      displayName: 'Get Attachment',
+      description: 'Download an email attachment by message ID and attachment ID',
+      method: 'GET',
+      endpoint: '/gmail/v1/users/me/messages/{{messageId}}/attachments/{{attachmentId}}',
+      inputSchema: {
+        type: 'object',
+        required: ['messageId', 'attachmentId'],
+        properties: {
+          messageId: { type: 'string', description: 'The email message ID' },
+          attachmentId: { type: 'string', description: 'The attachment ID from get_email result' },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          data: { type: 'string', description: 'Base64-encoded attachment content' },
+          size: { type: 'number', description: 'Attachment size in bytes' },
         },
       },
     });

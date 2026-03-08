@@ -45,6 +45,7 @@ export interface PlanPreviewData {
     action: string;
     connector: string;
     params: Record<string, unknown>;
+    description?: string;
   }>;
   missingConnections: string[];
   endUserId?: string;
@@ -53,6 +54,7 @@ export interface PlanPreviewData {
 export interface WorkflowResultItem {
   stepIndex: number;
   stepName: string;
+  description?: string;
   data: unknown;
 }
 

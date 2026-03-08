@@ -3,6 +3,7 @@ export interface AgentStep {
   action: string;
   connector: string;
   params: Record<string, unknown>;
+  description?: string;
 }
 
 export interface ParsedIntent {

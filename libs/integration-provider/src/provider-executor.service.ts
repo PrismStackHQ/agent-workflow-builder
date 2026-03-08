@@ -62,11 +62,14 @@ export class ProviderExecutorService {
     const provider = this.providerFactory.getProvider(config.integrationProvider!);
 
     // Check if this action has a proxy configuration (Nango-specific)
+    this.logger.log(
+      `executeViaProvider: integration="${integrationKey}" action="${actionName}" connection="${connectionId}" input=${JSON.stringify(input)}`,
+    );
     const proxyConfig = this.proxyRegistry.find(integrationKey, actionName);
 
     if (proxyConfig && provider instanceof NangoProvider) {
       this.logger.log(
-        `Executing via proxy [${proxyConfig.actionType}]: ${actionName} on ${integrationKey} for connection ${connectionId} and inputs are ${JSON.stringify(input)}`,
+        `→ Proxy match found: ${proxyConfig.providerConfigKey}::${proxyConfig.actionName} [${proxyConfig.actionType}]`,
       );
       return provider.executeProxy(
         config.connectionEndpointUrl!,
@@ -79,8 +82,8 @@ export class ProviderExecutorService {
     }
 
     // Fallback to standard action/trigger
-    this.logger.log(
-      `Executing action ${actionName} on ${integrationKey} for connection ${connectionId}`,
+    this.logger.warn(
+      `→ No proxy config found, falling back to Nango action/trigger API: ${actionName} on ${integrationKey}`,
     );
 
     return provider.executeAction(

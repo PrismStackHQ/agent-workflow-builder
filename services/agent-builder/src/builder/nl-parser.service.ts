@@ -40,20 +40,24 @@ export class NlParserService {
     const lower = command.toLowerCase();
     this.logger.log(`Parsing command: "${command}"`);
 
-    // Trigger detection
-    let schedule: string;
+    // Trigger detection — default to manual unless user explicitly mentions a schedule
+    let triggerType: 'cron' | 'manual' = 'manual';
+    let schedule: string | undefined;
     if (lower.includes('every minute')) {
+      triggerType = 'cron';
       schedule = '* * * * *';
     } else if (lower.includes('every hour')) {
+      triggerType = 'cron';
       schedule = '0 * * * *';
     } else if (lower.includes('every day') || lower.includes('daily')) {
+      triggerType = 'cron';
       schedule = '0 8 * * *';
     } else if (lower.includes('every week') || lower.includes('weekly')) {
+      triggerType = 'cron';
       schedule = '0 8 * * 1';
     } else if (lower.includes('every month') || lower.includes('monthly')) {
+      triggerType = 'cron';
       schedule = '0 8 1 * *';
-    } else {
-      schedule = '0 8 * * *'; // default daily
     }
 
     // Connector detection — resolve against actual tool registry
@@ -63,11 +67,11 @@ export class NlParserService {
     const steps = await this.templateMatcher.matchSteps(lower, connectors, workspaceId);
 
     this.logger.log(
-      `Parsed: schedule=${schedule}, connectors=${connectors.join(',')}, steps=${steps.length}`,
+      `Parsed: trigger=${triggerType}, schedule=${schedule || 'none'}, connectors=${connectors.join(',')}, steps=${steps.length}`,
     );
 
     return {
-      trigger: { type: 'cron', schedule },
+      trigger: { type: triggerType, schedule },
       connectors,
       steps,
     };
