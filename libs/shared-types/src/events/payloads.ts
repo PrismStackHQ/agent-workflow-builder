@@ -77,6 +77,13 @@ export interface RagQueryRequest {
   query: string;
 }
 
+// Connection metadata sent with plan preview
+export interface ConnectionInfo {
+  providerKey: string;
+  displayName: string;
+  logoUrl?: string;
+}
+
 // Agent plan events
 export interface AgentPlanPreviewEvent {
   orgId: string;
@@ -88,7 +95,7 @@ export interface AgentPlanPreviewEvent {
   schedule?: string;
   connectors: string[];
   steps: AgentStep[];
-  missingConnections: string[];
+  missingConnections: ConnectionInfo[];
   endUserId?: string;
 }
 

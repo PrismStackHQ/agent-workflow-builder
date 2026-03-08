@@ -257,6 +257,57 @@ class ApiClient {
     return res.json();
   }
 
+  // Proxy action definition endpoints
+  async listProxyActions() {
+    const res = await fetch(`${API_BASE}/proxy-actions`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to list proxy actions');
+    return res.json();
+  }
+
+  async getProxyAction(id: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to get proxy action');
+    return res.json();
+  }
+
+  async createProxyAction(data: Record<string, unknown>) {
+    const res = await fetch(`${API_BASE}/proxy-actions`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to create proxy action');
+    return res.json();
+  }
+
+  async updateProxyAction(id: string, data: Record<string, unknown>) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}`, {
+      method: 'PUT',
+      headers: this.headers(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to update proxy action');
+    return res.json();
+  }
+
+  async deleteProxyAction(id: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to delete proxy action');
+    return res.json();
+  }
+
+  async toggleProxyAction(id: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}/toggle`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to toggle proxy action');
+    return res.json();
+  }
+
   // Run resume
   async resumeRun(agentId: string, runId: string, connectionId: string) {
     const res = await fetch(`${API_BASE}/agents/${agentId}/runs/${runId}/resume`, {

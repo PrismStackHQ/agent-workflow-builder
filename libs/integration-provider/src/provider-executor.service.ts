@@ -65,7 +65,8 @@ export class ProviderExecutorService {
     this.logger.log(
       `executeViaProvider: integration="${integrationKey}" action="${actionName}" connection="${connectionId}" input=${JSON.stringify(input)}`,
     );
-    const proxyConfig = this.proxyRegistry.find(integrationKey, actionName);
+    await this.proxyRegistry.ensureLoaded(workspaceId);
+    const proxyConfig = this.proxyRegistry.find(workspaceId, integrationKey, actionName);
 
     if (proxyConfig && provider instanceof NangoProvider) {
       this.logger.log(

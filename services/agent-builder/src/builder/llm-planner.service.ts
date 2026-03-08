@@ -67,6 +67,8 @@ Pipes can be chained: {{step[0].result | filter(type=email) | map(id) | first}}
 6. Call check_connection for each required connector to verify the user has it connected
 7. Call submit_plan EXACTLY ONCE with the final structured plan
 
+CRITICAL: You MUST ALWAYS call submit_plan with the complete plan, even if check_connection returns { connected: false } for one or more connectors. The runtime handles missing connections by prompting the user for OAuth authorization. Never refuse to submit a plan due to missing connections — that is not your responsibility.
+
 ## Rules
 - ONLY use action names that appear in the catalog above — never invent action names
 - Use EXACT field names from each action's inputSchema for params

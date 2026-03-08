@@ -5,6 +5,7 @@ import { SUBJECTS } from '@agent-workflow/shared-types';
 import type {
   AgentCommandSubmittedEvent,
   AgentPlanConfirmedEvent,
+  ConnectionInfo,
   ParsedIntent,
 } from '@agent-workflow/shared-types';
 import { NlParserService } from './builder/nl-parser.service';
@@ -58,11 +59,28 @@ export class BuilderHandler implements OnModuleInit {
             connectionWhere.externalRefId = data.endUserId;
           }
 
-          const readyConnections = await this.prisma.connectionRef.findMany({
-            where: connectionWhere,
-          });
+          const [readyConnections, availableIntegrations] = await Promise.all([
+            this.prisma.connectionRef.findMany({ where: connectionWhere }),
+            this.prisma.availableIntegration.findMany({
+              where: { workspaceId: data.workspaceId },
+              select: { providerKey: true, displayName: true, logoUrl: true },
+            }),
+          ]);
           const readyProviders = new Set(readyConnections.map((c) => c.provider));
-          const missingConnections = intent.connectors.filter((c) => !readyProviders.has(c));
+          const missingProviderKeys = intent.connectors.filter((c) => !readyProviders.has(c));
+
+          // Enrich missing connections with displayName and logoUrl from AvailableIntegration
+          const integrationLookup = new Map(
+            availableIntegrations.map((ai) => [ai.providerKey, ai]),
+          );
+          const missingConnections: ConnectionInfo[] = missingProviderKeys.map((key) => {
+            const ai = integrationLookup.get(key);
+            return {
+              providerKey: key,
+              displayName: ai?.displayName || key,
+              logoUrl: ai?.logoUrl || undefined,
+            };
+          });
 
           const name =
             data.naturalLanguageCommand.length > 50

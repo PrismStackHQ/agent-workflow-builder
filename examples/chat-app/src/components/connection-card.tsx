@@ -4,24 +4,6 @@ import { useState } from 'react';
 import type { ConnectionCardData } from '@/lib/types';
 import { triggerNangoAuth } from '@/lib/nango';
 
-const providerLogos: Record<string, string> = {
-  gmail: 'https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png',
-  'google-mail': 'https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png',
-  gdrive: 'https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png',
-  'google-drive': 'https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png',
-  slack: 'https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png',
-  notion: 'https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png',
-};
-
-const providerDescriptions: Record<string, string> = {
-  gmail: 'An integration with Google Mail. Allows reading, sending, and managing emails.',
-  'google-mail': 'An integration with Google Mail. Allows reading, sending, and managing emails.',
-  gdrive: 'An integration with Google Drive. Allows searching files and folders, creating folders and shortcuts, uploading files, sharing, and managing permissions.',
-  'google-drive': 'An integration with Google Drive. Allows searching files and folders, creating folders and shortcuts, uploading files, sharing, and managing permissions.',
-  slack: 'An integration with Slack. Allows sending messages, managing channels, and more.',
-  notion: 'An integration with Notion. Allows creating and managing pages, databases, and more.',
-};
-
 interface ConnectionCardProps {
   card: ConnectionCardData;
   onConnect: (provider: string, endUserId: string, nangoConnectionId: string) => void;
@@ -32,8 +14,8 @@ export function ConnectionCard({ card, onConnect }: ConnectionCardProps) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const logoUrl = card.logoUrl || providerLogos[card.provider];
-  const description = card.description || providerDescriptions[card.provider] || `An integration with ${card.displayName}.`;
+  const logoUrl = card.logoUrl;
+  const description = card.description || `An integration with ${card.displayName}.`;
 
   const handleConnect = async () => {
     setConnecting(true);

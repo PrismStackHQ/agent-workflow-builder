@@ -7,6 +7,7 @@ import { ProviderFactory } from './provider-factory.service';
 import { ToolRegistryService } from './tool-registry.service';
 import { ProviderExecutorService } from './provider-executor.service';
 import { ProxyActionRegistry } from './proxy/proxy-action.registry';
+import { DeclarativeConfigInterpreter } from './proxy/declarative-config-interpreter';
 
 @Module({
   imports: [PrismaModule],
@@ -18,12 +19,14 @@ import { ProxyActionRegistry } from './proxy/proxy-action.registry';
     ToolRegistryService,
     ProviderExecutorService,
     ProxyActionRegistry,
+    DeclarativeConfigInterpreter,
   ],
   exports: [
     ProviderFactory,
     ToolRegistryService,
     ProviderExecutorService,
     ProxyActionRegistry,
+    DeclarativeConfigInterpreter,
   ],
 })
 export class IntegrationProviderModule {}

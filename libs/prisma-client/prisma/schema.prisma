@@ -37,6 +37,7 @@ model Workspace {
   agentDefinitions        AgentDefinition[]
   availableIntegrations   AvailableIntegration[]
   toolRegistryEntries     ToolRegistryEntry[]
+  proxyActionDefinitions  ProxyActionDefinition[]
 
   @@index([apiKey])
   @@index([orgId])
@@ -189,4 +190,38 @@ model ToolRegistryEntry {
 
   @@unique([workspaceId, integrationProvider, actionName])
   @@index([workspaceId, integrationKey])
+}
+
+model ProxyActionDefinition {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  providerConfigKey String
+  actionName        String
+  actionType        String
+  displayName       String
+  description       String?
+  method            String
+  endpoint          String
+
+  paramsConfig      Json?
+  bodyConfig        Json?
+  headersConfig     Json?
+  responseConfig    Json?
+  postProcessConfig Json?
+
+  transformerName   String?
+
+  inputSchema       Json?
+  outputSchema      Json?
+  isEnabled         Boolean  @default(true)
+  isDefault         Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, providerConfigKey, actionName])
+  @@index([workspaceId, providerConfigKey])
+  @@index([workspaceId, isEnabled])
 }

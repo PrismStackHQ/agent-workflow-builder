@@ -8,18 +8,15 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 11);
 }
 
-function providerDisplayName(provider: string): string {
-  const names: Record<string, string> = {
-    gmail: 'Gmail',
-    gdrive: 'Google Drive',
-    'google-drive': 'Google Drive',
-    'google-mail': 'Google Mail',
-    'google-calendar': 'Google Calendar',
-    slack: 'Slack',
-    notion: 'Notion',
-    google_sheets: 'Google Sheets',
-  };
-  return names[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+/** Fallback display name when server doesn't provide one */
+function fallbackDisplayName(provider: string): string {
+  return provider.replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+interface ConnectionInfoFromServer {
+  providerKey: string;
+  displayName: string;
+  logoUrl?: string;
 }
 
 export function useAgentChat() {
@@ -169,8 +166,16 @@ export function useAgentChat() {
 
         case 'agent_plan_preview': {
           const planSteps = (p.steps as any[]) || [];
-          const missingConns = (p.missingConnections as string[]) || [];
+          const rawMissing = (p.missingConnections as (ConnectionInfoFromServer | string)[]) || [];
           const endUserId = (p.endUserId as string) || process.env.NEXT_PUBLIC_END_USER_ID || '';
+
+          // Normalize: server sends ConnectionInfo objects, extract providerKeys for plan tracking
+          const missingInfos: ConnectionInfoFromServer[] = rawMissing.map((item) =>
+            typeof item === 'string'
+              ? { providerKey: item, displayName: fallbackDisplayName(item) }
+              : item,
+          );
+          const missingKeys = missingInfos.map((c) => c.providerKey);
 
           const plan: PlanPreviewData = {
             commandId: p.commandId as string,
@@ -180,7 +185,7 @@ export function useAgentChat() {
             schedule: p.schedule as string | undefined,
             connectors: (p.connectors as string[]) || [],
             steps: planSteps,
-            missingConnections: missingConns,
+            missingConnections: missingKeys,
             endUserId,
           };
 
@@ -205,18 +210,19 @@ export function useAgentChat() {
             ],
           }));
 
-          if (missingConns.length > 0) {
-            // Step 1: Show connection cards first — plan confirmation comes after all connected
-            for (const provider of missingConns) {
+          if (missingInfos.length > 0) {
+            // Show connection cards with enriched displayName/logoUrl from server
+            for (const conn of missingInfos) {
               addMessage({
                 id: uid(),
                 role: 'agent',
-                content: `You need to connect ${providerDisplayName(provider)} before we can proceed:`,
+                content: `You need to connect ${conn.displayName} before we can proceed:`,
                 timestamp: new Date(),
                 status: 'processing',
                 connectionCard: {
-                  provider,
-                  displayName: providerDisplayName(provider),
+                  provider: conn.providerKey,
+                  displayName: conn.displayName,
+                  logoUrl: conn.logoUrl,
                   connectionRefId: '',
                   agentDraftId: '',
                   connected: false,
@@ -273,12 +279,12 @@ export function useAgentChat() {
           addMessage({
             id: uid(),
             role: 'agent',
-            content: `You need to connect ${providerDisplayName(p.provider as string)} to continue. Please authorize it below:`,
+            content: `You need to connect ${fallbackDisplayName(p.provider as string)} to continue. Please authorize it below:`,
             timestamp: new Date(),
             status: 'processing',
             connectionCard: {
               provider: p.provider as string,
-              displayName: providerDisplayName(p.provider as string),
+              displayName: fallbackDisplayName(p.provider as string),
               connectionRefId: p.connectionRefId as string,
               agentDraftId: p.agentDraftId as string,
               connected: false,
@@ -387,14 +393,14 @@ export function useAgentChat() {
           addMessage({
             id: uid(),
             role: 'agent',
-            content: `The workflow needs access to ${providerDisplayName(p.integrationKey as string)}. Please connect it to continue.`,
+            content: `The workflow needs access to ${fallbackDisplayName(p.integrationKey as string)}. Please connect it to continue.`,
             timestamp: new Date(),
             status: 'processing',
             agentId: p.agentId as string,
             runId: p.runId as string,
             connectionCard: {
               provider: p.integrationKey as string,
-              displayName: providerDisplayName(p.integrationKey as string),
+              displayName: fallbackDisplayName(p.integrationKey as string),
               connectionRefId: '',
               agentDraftId: '',
               connected: false,
@@ -404,7 +410,7 @@ export function useAgentChat() {
             steps: [
               {
                 id: uid(),
-                label: `Paused — waiting for ${providerDisplayName(p.integrationKey as string)} connection`,
+                label: `Paused — waiting for ${fallbackDisplayName(p.integrationKey as string)} connection`,
                 status: 'running',
                 icon: 'pause',
               },

@@ -1,151 +1,130 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '@agent-workflow/prisma-client';
 import { ActionType, ProxyActionConfig } from './proxy-action.types';
+import { DeclarativeConfigInterpreter } from './declarative-config-interpreter';
 
 /**
- * Registry of proxy action configurations.
+ * Workspace-scoped registry of proxy action configurations.
  *
- * Maps (providerConfigKey, actionName) pairs to their proxy HTTP call
- * configurations. The registry is pre-populated with default actions for
- * common providers and can be extended at runtime via `register()`.
+ * Loads ProxyActionDefinition rows from the database and converts them
+ * into runtime ProxyActionConfig objects using the DeclarativeConfigInterpreter.
+ * Results are cached per workspace with a configurable TTL.
  *
- * The ProviderExecutorService checks this registry before executing an action.
- * If a proxy config exists, the request is routed through Nango's proxy API
- * instead of the /action/trigger endpoint.
- *
- * @example
- * // Lookup a proxy config
- * const config = registry.find('google-drive', 'search_files');
- *
- * // Find all SEARCH actions across providers
- * const searchActions = registry.findAllByType('SEARCH');
- *
- * // Register a custom proxy action
- * registry.register({
- *   providerConfigKey: 'salesforce',
- *   actionName: 'search_contacts',
- *   actionType: 'SEARCH',
- *   displayName: 'Search Contacts',
- *   description: 'Search for contacts in Salesforce',
- *   method: 'GET',
- *   endpoint: '/services/data/v59.0/search',
- *   paramsBuilder: (input) => ({ q: `FIND {${input.query}} IN ALL FIELDS RETURNING Contact` }),
- * });
+ * ProxyActionDefinition.providerConfigKey stores the actual Nango integration key
+ * (e.g., "google-mail", "google-drive-4") which matches ToolRegistryEntry.integrationKey
+ * directly — no normalization needed.
  */
 @Injectable()
 export class ProxyActionRegistry {
   private readonly logger = new Logger(ProxyActionRegistry.name);
 
-  /** Key format: "providerConfigKey::actionName" */
-  private readonly registry = new Map<string, ProxyActionConfig>();
+  /** Cache per workspace: key = workspaceId */
+  private readonly cache = new Map<
+    string,
+    {
+      configs: Map<string, ProxyActionConfig>;
+      aliases: Map<string, string>;
+      loadedAt: number;
+    }
+  >();
 
-  /**
-   * Maps alternative action names to their canonical action name.
-   * e.g., "documents" → "search_files", "emails" → "search_emails"
-   */
-  private readonly actionAliases = new Map<string, string>();
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-  /**
-   * Maps Nango integration key variants to canonical proxy provider keys.
-   * e.g., "google-mail" → "gmail", "google-drive-4" → "google-drive"
-   * This bridges the gap between Nango integration keys (used in the tool registry)
-   * and the short names used when registering proxy actions.
-   */
-  private readonly providerAliases = new Map<string, string>();
-
-  constructor() {
-    this.registerDefaults();
-  }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly interpreter: DeclarativeConfigInterpreter,
+  ) {}
 
   private key(providerConfigKey: string, actionName: string): string {
     return `${providerConfigKey}::${actionName}`;
   }
 
   /**
-   * Normalizes a Nango provider config key:
-   * 1. Strip trailing numeric suffix (e.g., "google-drive-4" → "google-drive")
-   * 2. Check provider aliases (e.g., "google-mail" → "gmail")
+   * Ensure configs are loaded for a workspace (loads from DB if cache expired).
    */
-  private normalizeProviderKey(providerConfigKey: string): string {
-    const stripped = providerConfigKey.replace(/-\d+$/, '');
-    return this.providerAliases.get(stripped) || this.providerAliases.get(providerConfigKey) || stripped;
-  }
-
-  /** Register a proxy action configuration. */
-  register(config: ProxyActionConfig): void {
-    const k = this.key(config.providerConfigKey, config.actionName);
-    this.registry.set(k, config);
-    this.logger.log(`Registered proxy action: ${k} (${config.actionType})`);
+  async ensureLoaded(workspaceId: string): Promise<void> {
+    const cached = this.cache.get(workspaceId);
+    if (cached && Date.now() - cached.loadedAt < ProxyActionRegistry.CACHE_TTL_MS) {
+      return;
+    }
+    await this.loadForWorkspace(workspaceId);
   }
 
   /**
-   * Register alternative action names that map to a canonical action.
-   * This allows the LLM planner to use natural names like "documents"
-   * or "files" and still resolve to the correct proxy action.
+   * Load all enabled proxy action definitions for a workspace from the database.
    */
-  registerAlias(alias: string, canonicalActionName: string): void {
-    this.actionAliases.set(alias, canonicalActionName);
+  async loadForWorkspace(workspaceId: string): Promise<void> {
+    const rows = await this.prisma.proxyActionDefinition.findMany({
+      where: { workspaceId, isEnabled: true },
+    });
+
+    const configs = new Map<string, ProxyActionConfig>();
+    const aliases = new Map<string, string>();
+
+    for (const row of rows) {
+      const config = this.interpreter.interpret(row);
+      configs.set(this.key(config.providerConfigKey, config.actionName), config);
+    }
+
+    // Build action aliases from common patterns
+    this.registerDefaultAliases(aliases);
+
+    this.cache.set(workspaceId, {
+      configs,
+      aliases,
+      loadedAt: Date.now(),
+    });
+
+    this.logger.log(
+      `Loaded ${configs.size} proxy actions for workspace ${workspaceId} ` +
+      `(providers: ${[...new Set([...configs.values()].map((c) => c.providerConfigKey))].join(', ')})`,
+    );
   }
 
   /**
-   * Register a provider key alias so that Nango integration keys
-   * (e.g., "google-mail") resolve to canonical proxy provider keys (e.g., "gmail").
+   * Invalidate cached configs for a workspace (e.g., after CRUD operations).
    */
-  registerProviderAlias(nangoKey: string, canonicalProviderKey: string): void {
-    this.providerAliases.set(nangoKey, canonicalProviderKey);
+  invalidateCache(workspaceId: string): void {
+    this.cache.delete(workspaceId);
   }
 
   /**
    * Find a proxy config by provider and action name.
+   * Must call ensureLoaded() before using this method.
    *
-   * Matching strategy (in order):
-   * 1. Exact match on providerConfigKey + actionName
-   * 2. Normalized provider key (strip -N suffix) + exact actionName
-   * 3. Exact provider key + resolved action alias
-   * 4. Normalized provider key + resolved action alias
-   * 5. Normalized provider key + first SEARCH action (fallback for unknown action names)
+   * providerConfigKey is the actual Nango integration key (e.g., "google-mail"),
+   * matching ProxyActionDefinition.providerConfigKey directly.
    */
-  find(providerConfigKey: string, actionName: string): ProxyActionConfig | undefined {
-    this.logger.log(
-      `Proxy lookup: provider="${providerConfigKey}" action="${actionName}"`,
-    );
+  find(
+    workspaceId: string,
+    providerConfigKey: string,
+    actionName: string,
+  ): ProxyActionConfig | undefined {
+    const cached = this.cache.get(workspaceId);
+    if (!cached) {
+      this.logger.warn(`No cached proxy configs for workspace ${workspaceId}`);
+      return undefined;
+    }
 
-    // 1. Exact match
-    const exact = this.registry.get(this.key(providerConfigKey, actionName));
+    this.logger.log(`Proxy lookup: provider="${providerConfigKey}" action="${actionName}"`);
+
+    // 1. Exact match (direct Nango key match)
+    const exact = cached.configs.get(this.key(providerConfigKey, actionName));
     if (exact) {
       this.logger.log(`  → Exact match: ${this.key(providerConfigKey, actionName)}`);
       return exact;
     }
 
-    const normalizedKey = this.normalizeProviderKey(providerConfigKey);
-    this.logger.log(`  Normalized provider key: "${providerConfigKey}" → "${normalizedKey}"`);
-
-    // 2. Normalized provider key + exact action name
-    const normalizedProvider = this.registry.get(this.key(normalizedKey, actionName));
-    if (normalizedProvider) {
-      this.logger.log(`  → Normalized match: ${this.key(normalizedKey, actionName)}`);
-      return normalizedProvider;
-    }
-
-    // 3-4. Try resolved alias with both exact and normalized key
-    const resolvedAction = this.actionAliases.get(actionName);
+    // 2. Try action aliases (e.g., "send-email" → "send_email")
+    const resolvedAction = cached.aliases.get(actionName);
     if (resolvedAction) {
       this.logger.log(`  Action alias: "${actionName}" → "${resolvedAction}"`);
-
-      const aliasExact = this.registry.get(this.key(providerConfigKey, resolvedAction));
-      if (aliasExact) {
-        this.logger.log(`  → Alias exact match: ${this.key(providerConfigKey, resolvedAction)}`);
-        return aliasExact;
-      }
-
-      const aliasNormalized = this.registry.get(this.key(normalizedKey, resolvedAction));
-      if (aliasNormalized) {
-        this.logger.log(`  → Alias normalized match: ${this.key(normalizedKey, resolvedAction)}`);
-        return aliasNormalized;
-      }
+      const aliasMatch = cached.configs.get(this.key(providerConfigKey, resolvedAction));
+      if (aliasMatch) return aliasMatch;
     }
 
-    // 5. Fallback: find the default SEARCH action for this provider
-    const searchFallback = this.findByType(normalizedKey, 'SEARCH');
+    // 3. Fallback: first SEARCH action for this provider
+    const searchFallback = this.findByType(workspaceId, providerConfigKey, 'SEARCH');
     if (searchFallback.length > 0) {
       this.logger.warn(
         `No exact proxy match for "${providerConfigKey}::${actionName}", ` +
@@ -154,728 +133,69 @@ export class ProxyActionRegistry {
       return searchFallback[0];
     }
 
-    this.logger.warn(
-      `No proxy config found for "${providerConfigKey}::${actionName}" (normalized: "${normalizedKey}")`,
-    );
+    this.logger.warn(`No proxy config found for "${providerConfigKey}::${actionName}"`);
     return undefined;
   }
 
-  /** Find all proxy actions of a given type for a specific provider. Handles normalized keys. */
-  findByType(providerConfigKey: string, actionType: ActionType): ProxyActionConfig[] {
-    const normalizedKey = this.normalizeProviderKey(providerConfigKey);
-    return Array.from(this.registry.values()).filter(
-      (c) => c.providerConfigKey === normalizedKey && c.actionType === actionType,
+  /** Find all proxy actions of a given type for a specific provider. */
+  findByType(workspaceId: string, providerConfigKey: string, actionType: ActionType): ProxyActionConfig[] {
+    const cached = this.cache.get(workspaceId);
+    if (!cached) return [];
+
+    return Array.from(cached.configs.values()).filter(
+      (c) => c.providerConfigKey === providerConfigKey && c.actionType === actionType,
     );
   }
 
-  /** Find all proxy actions of a given type across all providers. */
-  findAllByType(actionType: ActionType): ProxyActionConfig[] {
-    return Array.from(this.registry.values()).filter((c) => c.actionType === actionType);
-  }
-
-  /** Get all registered proxy action configs. */
-  getAll(): ProxyActionConfig[] {
-    return Array.from(this.registry.values());
-  }
-
-  // ---------------------------------------------------------------------------
-  // Default proxy actions
-  // ---------------------------------------------------------------------------
-
-  private registerDefaults(): void {
-    this.registerProviderAliases();
-    this.registerGoogleDriveActions();
-    this.registerGmailActions();
-    this.registerSlackActions();
-    this.registerNotionActions();
-    this.registerGitHubActions();
-    this.registerDefaultAliases();
+  /** Get all cached proxy action configs for a workspace. */
+  getAll(workspaceId: string): ProxyActionConfig[] {
+    const cached = this.cache.get(workspaceId);
+    if (!cached) return [];
+    return Array.from(cached.configs.values());
   }
 
   /**
-   * Map Nango integration key variants to the canonical short keys
-   * used when registering proxy actions.
+   * Register common action name aliases so the LLM planner can use
+   * natural names and still resolve to correct proxy actions.
    */
-  private registerProviderAliases(): void {
-    // Google Mail: Nango key "google-mail" → proxy key "gmail"
-    this.registerProviderAlias('google-mail', 'gmail');
-    this.registerProviderAlias('google-mail-2', 'gmail');
+  private registerDefaultAliases(aliases: Map<string, string>): void {
+    // Google Drive
+    aliases.set('documents', 'search_files');
+    aliases.set('files', 'search_files');
+    aliases.set('search_documents', 'search_files');
+    aliases.set('find_files', 'search_files');
+    aliases.set('find_documents', 'search_files');
+    aliases.set('create_directory', 'create_folder');
+    aliases.set('new_folder', 'create_folder');
+    aliases.set('mkdir', 'create_folder');
+    aliases.set('upload', 'upload_file');
+    aliases.set('copy_file', 'upload_file');
+    aliases.set('save_file', 'upload_file');
 
-    // Google Drive: Nango key "google-drive" matches proxy key already,
-    // but add common numbered variants
-    this.registerProviderAlias('google-drive-4', 'google-drive');
-    this.registerProviderAlias('google-drive-2', 'google-drive');
-    this.registerProviderAlias('google-drive-3', 'google-drive');
-    this.registerProviderAlias('gdrive', 'google-drive');
+    // Gmail
+    aliases.set('emails', 'search_emails');
+    aliases.set('mail', 'search_emails');
+    aliases.set('find_emails', 'search_emails');
+    aliases.set('messages', 'list_emails');
+    aliases.set('email_details', 'get_email');
+    aliases.set('read_email', 'get_email');
+    aliases.set('download_attachment', 'get_attachment');
+    aliases.set('send-email', 'send_email');
+    aliases.set('compose_email', 'send_email');
 
-    // Slack: direct match, but add common variants
-    this.registerProviderAlias('slack-2', 'slack');
+    // Slack
+    aliases.set('send_message', 'post_message');
+    aliases.set('channels', 'list_channels');
 
-    // GitHub: direct match
-    this.registerProviderAlias('github-2', 'github');
+    // Notion
+    aliases.set('pages', 'search');
+    aliases.set('find_pages', 'search');
+    aliases.set('search_pages', 'search');
 
-    // Notion: direct match
-    this.registerProviderAlias('notion-2', 'notion');
-  }
-
-  /**
-   * Register common aliases for action names that the LLM planner might generate.
-   * Maps natural language action names to canonical proxy action names.
-   */
-  private registerDefaultAliases(): void {
-    // Google Drive aliases
-    this.registerAlias('documents', 'search_files');
-    this.registerAlias('files', 'search_files');
-    this.registerAlias('search_documents', 'search_files');
-    this.registerAlias('find_files', 'search_files');
-    this.registerAlias('find_documents', 'search_files');
-
-    this.registerAlias('create_directory', 'create_folder');
-    this.registerAlias('new_folder', 'create_folder');
-    this.registerAlias('mkdir', 'create_folder');
-    this.registerAlias('upload', 'upload_file');
-    this.registerAlias('copy_file', 'upload_file');
-    this.registerAlias('save_file', 'upload_file');
-
-    // Gmail aliases
-    this.registerAlias('emails', 'search_emails');
-    this.registerAlias('mail', 'search_emails');
-    this.registerAlias('find_emails', 'search_emails');
-    this.registerAlias('messages', 'list_emails');
-    this.registerAlias('email_details', 'get_email');
-    this.registerAlias('read_email', 'get_email');
-    this.registerAlias('download_attachment', 'get_attachment');
-    this.registerAlias('send-email', 'send_email');
-    this.registerAlias('compose_email', 'send_email');
-
-    // Slack aliases
-    this.registerAlias('send_message', 'post_message');
-    this.registerAlias('channels', 'list_channels');
-
-    // Notion aliases
-    this.registerAlias('pages', 'search');
-    this.registerAlias('find_pages', 'search');
-    this.registerAlias('search_pages', 'search');
-
-    // GitHub aliases
-    this.registerAlias('repos', 'list_repos');
-    this.registerAlias('repositories', 'list_repos');
-    this.registerAlias('issues', 'search_issues');
-    this.registerAlias('find_issues', 'search_issues');
-  }
-
-  // -- Google Drive ------------------------------------------------------------
-
-  /** Default result limit applied to proxy SEARCH/LIST actions */
-  private static readonly DEFAULT_LIMIT = 10;
-
-  /**
-   * Extract a search query string from input, checking multiple possible
-   * param names that the LLM planner might generate.
-   */
-  private static extractQuery(input: Record<string, unknown>, ...keys: string[]): string {
-    for (const key of keys) {
-      if (input[key] !== undefined && input[key] !== null && String(input[key]).trim()) {
-        return String(input[key]).trim();
-      }
-    }
-    return '';
-  }
-
-  private static extractLimit(input: Record<string, unknown>, defaultLimit = ProxyActionRegistry.DEFAULT_LIMIT): number {
-    return Number(input.maxResults || input.limit || input.max || input.per_page || input.pageSize || defaultLimit);
-  }
-
-  private registerGoogleDriveActions(): void {
-    this.register({
-      providerConfigKey: 'google-drive',
-      actionName: 'search_files',
-      actionType: 'SEARCH',
-      displayName: 'Search Files',
-      description: 'Search for files in Google Drive by name or query',
-      method: 'GET',
-      endpoint: '/drive/v3/files',
-      paramsBuilder: (input) => {
-        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'fileName', 'name', 'search', 'keyword', 'keywords');
-        const parts: string[] = [];
-        if (searchText) parts.push(`name contains '${searchText}'`);
-        if (input.mimeType) parts.push(`mimeType='${input.mimeType}'`);
-        parts.push('trashed=false');
-        const limit = ProxyActionRegistry.extractLimit(input);
-        return {
-          q: parts.join(' and '),
-          pageSize: String(limit),
-          fields: 'files(id,name,mimeType,modifiedTime,webViewLink)',
-        };
-      },
-      responseMapper: (data: any) => data.files || [],
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query text (file name or keyword)' },
-          fileName: { type: 'string', description: 'File name to search for (alias for query)' },
-          mimeType: { type: 'string', description: 'MIME type filter' },
-          maxResults: { type: 'number', description: 'Maximum results (default: 10)' },
-        },
-      },
-      outputSchema: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            mimeType: { type: 'string' },
-            modifiedTime: { type: 'string' },
-          },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'google-drive',
-      actionName: 'get_file',
-      actionType: 'GET',
-      displayName: 'Get File Metadata',
-      description: 'Get metadata for a specific Google Drive file',
-      method: 'GET',
-      endpoint: '/drive/v3/files/{{fileId}}',
-      paramsBuilder: () => ({
-        fields: 'id,name,mimeType,modifiedTime,size,webViewLink',
-      }),
-      inputSchema: {
-        type: 'object',
-        required: ['fileId'],
-        properties: {
-          fileId: { type: 'string', description: 'The ID of the file' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'google-drive',
-      actionName: 'download_file',
-      actionType: 'DOWNLOAD',
-      displayName: 'Download File',
-      description: 'Download the content of a Google Drive file',
-      method: 'GET',
-      endpoint: '/drive/v3/files/{{fileId}}',
-      paramsBuilder: () => ({ alt: 'media' }),
-      inputSchema: {
-        type: 'object',
-        required: ['fileId'],
-        properties: {
-          fileId: { type: 'string', description: 'The ID of the file to download' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'google-drive',
-      actionName: 'create_folder',
-      actionType: 'CREATE',
-      displayName: 'Create Folder',
-      description: 'Create a new folder in Google Drive',
-      method: 'POST',
-      endpoint: '/drive/v3/files',
-      bodyBuilder: (input) => {
-        const name = String(input.folderName || input.name || 'New Folder');
-        const body: Record<string, unknown> = {
-          name,
-          mimeType: 'application/vnd.google-apps.folder',
-        };
-        if (input.parentId) body.parents = [String(input.parentId)];
-        return body;
-      },
-      responseMapper: (data: any) => ({ id: data.id, name: data.name, mimeType: data.mimeType }),
-      inputSchema: {
-        type: 'object',
-        required: ['folderName'],
-        properties: {
-          folderName: { type: 'string', description: 'Name for the new folder' },
-          parentId: { type: 'string', description: 'Parent folder ID (optional, defaults to root)' },
-        },
-      },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'ID of the created folder' },
-          name: { type: 'string' },
-          mimeType: { type: 'string' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'google-drive',
-      actionName: 'upload_file',
-      actionType: 'CREATE',
-      displayName: 'Upload / Save File',
-      description: 'Create a file entry in Google Drive with optional text content saved as description',
-      method: 'POST',
-      endpoint: '/drive/v3/files',
-      bodyBuilder: (input) => {
-        const name = String(input.fileName || input.name || 'Untitled');
-        const body: Record<string, unknown> = { name };
-        if (input.folderId) body.parents = [String(input.folderId)];
-        if (input.mimeType) body.mimeType = String(input.mimeType);
-        if (input.description || input.content) body.description = String(input.description || input.content);
-        if (input.appProperties) body.appProperties = input.appProperties;
-        return body;
-      },
-      responseMapper: (data: any) => ({ id: data.id, name: data.name, mimeType: data.mimeType, webViewLink: data.webViewLink }),
-      inputSchema: {
-        type: 'object',
-        required: ['fileName'],
-        properties: {
-          fileName: { type: 'string', description: 'Name for the file' },
-          folderId: { type: 'string', description: 'Destination folder ID (from create_folder result)' },
-          mimeType: { type: 'string', description: 'MIME type of the file' },
-          content: { type: 'string', description: 'Text content to save as the file description' },
-          description: { type: 'string', description: 'File description (alias for content)' },
-        },
-      },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'ID of the created file' },
-          name: { type: 'string' },
-          mimeType: { type: 'string' },
-          webViewLink: { type: 'string' },
-        },
-      },
-    });
-  }
-
-  // -- Gmail -------------------------------------------------------------------
-
-  private registerGmailActions(): void {
-    this.register({
-      providerConfigKey: 'gmail',
-      actionName: 'search_emails',
-      actionType: 'SEARCH',
-      displayName: 'Search Emails',
-      description: 'Search for emails in Gmail using query syntax (subject, from, label, etc.)',
-      method: 'GET',
-      endpoint: '/gmail/v1/users/me/messages',
-      paramsBuilder: (input) => {
-        // Build Gmail search query from various possible input params
-        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'search', 'keyword', 'keywords', 'subject');
-        const params: Record<string, string> = {};
-        if (searchText) params.q = searchText;
-        if (input.from) params.q = `${params.q || ''} from:${input.from}`.trim();
-        if (input.to) params.q = `${params.q || ''} to:${input.to}`.trim();
-        const limit = ProxyActionRegistry.extractLimit(input);
-        params.maxResults = String(limit);
-        if (input.labelIds) params.labelIds = String(input.labelIds);
-        return params;
-      },
-      responseMapper: (data: any) => data.messages || [],
-      postProcessor: async (data: unknown, proxyFetch) => {
-        // Auto-enrich: fetch metadata (subject, from, date) for each message ID
-        const messages = data as Array<{ id: string; threadId: string }>;
-        if (!Array.isArray(messages) || messages.length === 0) return messages;
-        const enriched = await Promise.all(
-          messages.slice(0, 10).map(async (msg) => {
-            try {
-              const detail: any = await proxyFetch(
-                'GET',
-                `/gmail/v1/users/me/messages/${msg.id}`,
-                { format: 'metadata', metadataHeaders: 'Subject,From,Date' },
-              );
-              const headers = detail?.payload?.headers || [];
-              const getH = (n: string) => headers.find((h: any) => h.name.toLowerCase() === n.toLowerCase())?.value || '';
-              return {
-                id: msg.id,
-                threadId: msg.threadId,
-                subject: getH('Subject'),
-                from: getH('From'),
-                date: getH('Date'),
-                snippet: detail?.snippet || '',
-              };
-            } catch {
-              return { id: msg.id, threadId: msg.threadId, subject: '', from: '', date: '', snippet: '' };
-            }
-          }),
-        );
-        return enriched;
-      },
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Gmail search query (e.g., "from:user@example.com subject:invoice")' },
-          keyword: { type: 'string', description: 'Search keyword (alias for query)' },
-          from: { type: 'string', description: 'Filter by sender email address' },
-          to: { type: 'string', description: 'Filter by recipient email address' },
-          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)' },
-          labelIds: { type: 'string', description: 'Comma-separated label IDs to filter by' },
-        },
-      },
-      outputSchema: {
-        type: 'array',
-        description: 'Array of email summaries with subject, from, date, and snippet.',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Message ID — pass to get_email to get full content' },
-            threadId: { type: 'string' },
-            subject: { type: 'string', description: 'Email subject line' },
-            from: { type: 'string', description: 'Sender name and email' },
-            date: { type: 'string', description: 'Date the email was sent' },
-            snippet: { type: 'string', description: 'Short preview of the email body' },
-          },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'gmail',
-      actionName: 'list_emails',
-      actionType: 'LIST',
-      displayName: 'List Emails',
-      description: 'List recent emails from the inbox',
-      method: 'GET',
-      endpoint: '/gmail/v1/users/me/messages',
-      paramsBuilder: (input) => {
-        const limit = ProxyActionRegistry.extractLimit(input);
-        const params: Record<string, string> = { maxResults: String(limit) };
-        return params;
-      },
-      responseMapper: (data: any) => data.messages || [],
-      postProcessor: async (data: unknown, proxyFetch) => {
-        const messages = data as Array<{ id: string; threadId: string }>;
-        if (!Array.isArray(messages) || messages.length === 0) return messages;
-        const enriched = await Promise.all(
-          messages.slice(0, 10).map(async (msg) => {
-            try {
-              const detail: any = await proxyFetch(
-                'GET',
-                `/gmail/v1/users/me/messages/${msg.id}`,
-                { format: 'metadata', metadataHeaders: 'Subject,From,Date' },
-              );
-              const headers = detail?.payload?.headers || [];
-              const getH = (n: string) => headers.find((h: any) => h.name.toLowerCase() === n.toLowerCase())?.value || '';
-              return {
-                id: msg.id,
-                threadId: msg.threadId,
-                subject: getH('Subject'),
-                from: getH('From'),
-                date: getH('Date'),
-                snippet: detail?.snippet || '',
-              };
-            } catch {
-              return { id: msg.id, threadId: msg.threadId, subject: '', from: '', date: '', snippet: '' };
-            }
-          }),
-        );
-        return enriched;
-      },
-      inputSchema: {
-        type: 'object',
-        properties: {
-          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'gmail',
-      actionName: 'get_email',
-      actionType: 'GET',
-      displayName: 'Get Email',
-      description: 'Get the full content of a specific email including subject, body, sender, and attachment info',
-      method: 'GET',
-      endpoint: '/gmail/v1/users/me/messages/{{messageId}}',
-      paramsBuilder: () => ({ format: 'full' }),
-      responseMapper: (data: any) => {
-        const headers = data.payload?.headers || [];
-        const getHeader = (name: string) =>
-          headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
-        return {
-          id: data.id,
-          threadId: data.threadId,
-          subject: getHeader('Subject'),
-          from: getHeader('From'),
-          to: getHeader('To'),
-          date: getHeader('Date'),
-          snippet: data.snippet || '',
-          labelIds: data.labelIds || [],
-          body: data.payload?.body?.data || data.payload?.parts?.[0]?.body?.data || '',
-          hasAttachments: (data.payload?.parts || []).some(
-            (p: any) => p.filename && p.filename.length > 0,
-          ),
-          attachments: (data.payload?.parts || [])
-            .filter((p: any) => p.filename && p.filename.length > 0)
-            .map((p: any) => ({
-              filename: p.filename,
-              mimeType: p.mimeType,
-              attachmentId: p.body?.attachmentId,
-              size: p.body?.size,
-            })),
-        };
-      },
-      inputSchema: {
-        type: 'object',
-        required: ['messageId'],
-        properties: {
-          messageId: { type: 'string', description: 'The ID of the email message' },
-        },
-      },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          subject: { type: 'string' },
-          from: { type: 'string' },
-          to: { type: 'string' },
-          date: { type: 'string' },
-          snippet: { type: 'string', description: 'Short preview of the email body' },
-          body: { type: 'string', description: 'Base64-encoded email body' },
-          hasAttachments: { type: 'boolean' },
-          attachments: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                filename: { type: 'string' },
-                mimeType: { type: 'string' },
-                attachmentId: { type: 'string' },
-                size: { type: 'number' },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'gmail',
-      actionName: 'get_attachment',
-      actionType: 'DOWNLOAD',
-      displayName: 'Get Attachment',
-      description: 'Download an email attachment by message ID and attachment ID',
-      method: 'GET',
-      endpoint: '/gmail/v1/users/me/messages/{{messageId}}/attachments/{{attachmentId}}',
-      inputSchema: {
-        type: 'object',
-        required: ['messageId', 'attachmentId'],
-        properties: {
-          messageId: { type: 'string', description: 'The email message ID' },
-          attachmentId: { type: 'string', description: 'The attachment ID from get_email result' },
-        },
-      },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          data: { type: 'string', description: 'Base64-encoded attachment content' },
-          size: { type: 'number', description: 'Attachment size in bytes' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'gmail',
-      actionName: 'send_email',
-      actionType: 'SEND',
-      displayName: 'Send Email',
-      description: 'Send an email via Gmail. Accepts to, subject, and body — automatically builds the email.',
-      method: 'POST',
-      endpoint: '/gmail/v1/users/me/messages/send',
-      bodyBuilder: (input) => {
-        // If raw is provided directly, use it as-is
-        if (input.raw && !input.to) {
-          return { raw: input.raw };
-        }
-        // Build RFC 2822 message from simple params and base64url-encode it
-        const to = String(input.to || '');
-        const subject = String(input.subject || '(no subject)');
-        const body = String(input.body || input.text || input.content || '');
-        const cc = input.cc ? `Cc: ${input.cc}\r\n` : '';
-        const message = `To: ${to}\r\n${cc}Subject: ${subject}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
-        // Base64url encode (Node.js Buffer)
-        const raw = Buffer.from(message)
-          .toString('base64')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/, '');
-        return { raw };
-      },
-      inputSchema: {
-        type: 'object',
-        required: ['to', 'subject', 'body'],
-        properties: {
-          to: { type: 'string', description: 'Recipient email address' },
-          subject: { type: 'string', description: 'Email subject line' },
-          body: { type: 'string', description: 'Plain text email body content' },
-          cc: { type: 'string', description: 'CC recipient email address (optional)' },
-        },
-      },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'ID of the sent message' },
-          threadId: { type: 'string' },
-          labelIds: { type: 'array', items: { type: 'string' } },
-        },
-      },
-    });
-  }
-
-  // -- Slack -------------------------------------------------------------------
-
-  private registerSlackActions(): void {
-    this.register({
-      providerConfigKey: 'slack',
-      actionName: 'post_message',
-      actionType: 'SEND',
-      displayName: 'Post Message',
-      description: 'Send a message to a Slack channel',
-      method: 'POST',
-      endpoint: '/chat.postMessage',
-      bodyBuilder: (input) => ({
-        channel: input.channel,
-        text: input.text,
-        ...(input.blocks ? { blocks: input.blocks } : {}),
-      }),
-      inputSchema: {
-        type: 'object',
-        required: ['channel', 'text'],
-        properties: {
-          channel: { type: 'string', description: 'Channel ID or name' },
-          text: { type: 'string', description: 'Message text' },
-          blocks: { type: 'array', description: 'Block Kit blocks for rich messages' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'slack',
-      actionName: 'list_channels',
-      actionType: 'LIST',
-      displayName: 'List Channels',
-      description: 'List Slack channels the bot has access to',
-      method: 'GET',
-      endpoint: '/conversations.list',
-      paramsBuilder: (input) => {
-        const limit = ProxyActionRegistry.extractLimit(input);
-        return { types: 'public_channel,private_channel', limit: String(limit) };
-      },
-      responseMapper: (data: any) => data.channels || [],
-      inputSchema: {
-        type: 'object',
-        properties: {
-          limit: { type: 'number', description: 'Maximum number of channels to return' },
-        },
-      },
-    });
-  }
-
-  // -- Notion ------------------------------------------------------------------
-
-  private registerNotionActions(): void {
-    this.register({
-      providerConfigKey: 'notion',
-      actionName: 'search',
-      actionType: 'SEARCH',
-      displayName: 'Search Notion',
-      description: 'Search for pages and databases in Notion',
-      method: 'POST',
-      endpoint: '/v1/search',
-      headersBuilder: () => ({ 'Notion-Version': '2022-06-28' }),
-      bodyBuilder: (input) => {
-        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'search', 'keyword');
-        const body: Record<string, unknown> = {};
-        if (searchText) body.query = searchText;
-        if (input.filter) body.filter = input.filter;
-        if (input.sort) body.sort = input.sort;
-        const limit = ProxyActionRegistry.extractLimit(input);
-        body.page_size = limit;
-        return body;
-      },
-      responseMapper: (data: any) => data.results || [],
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query text' },
-          filter: { type: 'object', description: 'Filter by object type (page or database)' },
-          sort: { type: 'object', description: 'Sort order for results' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'notion',
-      actionName: 'get_page',
-      actionType: 'GET',
-      displayName: 'Get Page',
-      description: 'Retrieve a Notion page by ID',
-      method: 'GET',
-      endpoint: '/v1/pages/{{pageId}}',
-      headersBuilder: () => ({ 'Notion-Version': '2022-06-28' }),
-      inputSchema: {
-        type: 'object',
-        required: ['pageId'],
-        properties: {
-          pageId: { type: 'string', description: 'The Notion page ID' },
-        },
-      },
-    });
-  }
-
-  // -- GitHub ------------------------------------------------------------------
-
-  private registerGitHubActions(): void {
-    this.register({
-      providerConfigKey: 'github',
-      actionName: 'list_repos',
-      actionType: 'LIST',
-      displayName: 'List Repositories',
-      description: 'List repositories for the authenticated user',
-      method: 'GET',
-      endpoint: '/user/repos',
-      paramsBuilder: (input) => {
-        const limit = ProxyActionRegistry.extractLimit(input);
-        const params: Record<string, string> = { per_page: String(limit) };
-        if (input.sort) params.sort = String(input.sort);
-        if (input.type) params.type = String(input.type);
-        return params;
-      },
-      inputSchema: {
-        type: 'object',
-        properties: {
-          sort: { type: 'string', description: 'Sort by: created, updated, pushed, full_name' },
-          per_page: { type: 'number', description: 'Results per page (max 100)' },
-          type: { type: 'string', description: 'Filter by type: all, owner, public, private, member' },
-        },
-      },
-    });
-
-    this.register({
-      providerConfigKey: 'github',
-      actionName: 'search_issues',
-      actionType: 'SEARCH',
-      displayName: 'Search Issues',
-      description: 'Search for issues and pull requests across GitHub repositories',
-      method: 'GET',
-      endpoint: '/search/issues',
-      paramsBuilder: (input) => {
-        const searchText = ProxyActionRegistry.extractQuery(input, 'query', 'q', 'search', 'keyword');
-        const limit = ProxyActionRegistry.extractLimit(input);
-        const params: Record<string, string> = { per_page: String(limit) };
-        if (searchText) params.q = searchText;
-        if (input.sort) params.sort = String(input.sort);
-        return params;
-      },
-      responseMapper: (data: any) => data.items || [],
-      inputSchema: {
-        type: 'object',
-        required: ['query'],
-        properties: {
-          query: { type: 'string', description: 'GitHub search query (e.g., "repo:owner/name is:open label:bug")' },
-          sort: { type: 'string', description: 'Sort by: comments, reactions, created, updated' },
-          per_page: { type: 'number', description: 'Results per page (max 100)' },
-        },
-      },
-    });
+    // GitHub
+    aliases.set('repos', 'list_repos');
+    aliases.set('repositories', 'list_repos');
+    aliases.set('issues', 'search_issues');
+    aliases.set('find_issues', 'search_issues');
   }
 }
