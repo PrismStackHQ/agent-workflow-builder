@@ -374,6 +374,100 @@ export class LlmPlannerService {
       `LLM planner produced plan: ${plan.name} with ${plan.steps.length} steps`,
     );
 
+    // Generate elaborative instructions in parallel (non-blocking for plan)
+    try {
+      intent.instructions = await this.generateInstructions(
+        command,
+        intent,
+        actionCatalog,
+      );
+      this.logger.log(`Generated instructions (${intent.instructions.length} chars)`);
+    } catch (err) {
+      this.logger.warn(`Failed to generate instructions: ${err}`);
+      // Non-fatal — plan still works without instructions
+    }
+
     return intent;
+  }
+
+  /**
+   * Generate comprehensive execution instructions for the workflow.
+   * Makes a second LLM call with a focused documentation prompt.
+   */
+  private async generateInstructions(
+    command: string,
+    intent: ParsedIntent,
+    actionCatalog: string,
+  ): Promise<string> {
+    const model = this.getModel();
+
+    const systemPrompt = `You are a workflow documentation specialist. Given a user's natural language command and a structured execution plan, generate comprehensive execution instructions in markdown format.
+
+## Output Structure
+
+Write a clear, detailed instruction document following this exact structure:
+
+### Agent Role
+One sentence describing what this agent does end-to-end.
+
+### Connections Required
+For each integration connector used:
+- **[Connector Display Name]** — what it's used for in this workflow
+
+### Workflow — Step by Step
+
+For each step in the plan, write a detailed subsection:
+
+#### Step {N}: {description}
+- **Action:** \`{action_name}\` via {connector}
+- **Parameters:**
+  - Explain each parameter, its purpose, and its value
+  - For expression parameters (e.g., \`{{step[0].result.id}}\`), explain which prior step's output is being used and what field is being accessed
+- **Expects:** What input data this step needs (from a prior step or user input)
+- **Produces:** What this step returns (reference the outputSchema if available)
+- **On failure:** What should happen if this step fails
+
+### Expected Output
+Describe the final result of the complete workflow — what the user will get.
+
+### Error Handling
+- List per-step failure modes and recovery strategies
+- Note which steps are critical vs. which can be skipped
+- Describe global error handling rules
+
+### Constraints & Notes
+- Processing limits, edge cases, or important assumptions
+- Any data format considerations
+
+## Rules
+- Be specific and actionable — reference actual action names, parameter names, and data paths
+- Explain data flow between steps clearly using the expression syntax
+- Keep it practical — focus on what matters for execution
+- Use the action catalog schemas to accurately describe inputs and outputs
+- Do NOT include placeholder IDs or connection IDs — those are resolved at runtime`;
+
+    const userPrompt = `## User Command
+"${command}"
+
+## Execution Plan
+${JSON.stringify(intent.steps, null, 2)}
+
+## Connectors Used
+${intent.connectors.join(', ')}
+
+## Trigger Type
+${intent.trigger.type}${intent.trigger.schedule ? ` (schedule: ${intent.trigger.schedule})` : ''}
+
+## Available Action Catalog (for schema reference)
+${actionCatalog}`;
+
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      maxTokens: 2000,
+    });
+
+    return result.text;
   }
 }

@@ -59,6 +59,8 @@ export class WsHandler implements OnModuleInit {
             connectors: data.connectors,
             steps: data.steps,
             missingConnections: data.missingConnections,
+            connectorDisplayNames: data.connectorDisplayNames,
+            instructions: data.instructions,
             endUserId: data.endUserId,
           },
         });

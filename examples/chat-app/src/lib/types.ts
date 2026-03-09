@@ -49,6 +49,7 @@ export interface PlanPreviewData {
   }>;
   missingConnections: string[];
   connectorDisplayNames?: Record<string, string>;
+  instructions?: string;
   endUserId?: string;
 }
 

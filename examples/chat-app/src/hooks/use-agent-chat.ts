@@ -197,6 +197,7 @@ export function useAgentChat() {
             steps: planSteps,
             missingConnections: missingKeys,
             connectorDisplayNames,
+            instructions: p.instructions as string | undefined,
             endUserId,
           };
 
@@ -569,6 +570,7 @@ export function useAgentChat() {
         triggerType: 'manual',
         connectors: plan.connectors,
         steps: plan.steps,
+        instructions: plan.instructions,
         endUserId: plan.endUserId,
       });
 

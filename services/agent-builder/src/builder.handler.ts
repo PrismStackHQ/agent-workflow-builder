@@ -112,6 +112,7 @@ export class BuilderHandler implements OnModuleInit {
             steps: intent.steps,
             missingConnections,
             connectorDisplayNames,
+            instructions: intent.instructions,
             endUserId: data.endUserId,
           });
 
@@ -143,6 +144,7 @@ export class BuilderHandler implements OnModuleInit {
             },
             connectors: data.connectors,
             steps: data.steps,
+            instructions: data.instructions,
           };
 
           const agent = await this.assembler.assembleAgent(

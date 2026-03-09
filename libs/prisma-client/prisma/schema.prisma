@@ -125,6 +125,7 @@ model AgentDefinition {
   triggerType            String      @default("cron")
   requiredConnections    Json        @default("[]")
   steps                  Json        @default("[]")
+  instructions           String?     @db.Text
   status                 AgentStatus @default(DRAFT)
   k8sCronJobName         String?
   k8sNamespace           String?

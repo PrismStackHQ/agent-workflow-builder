@@ -14,6 +14,7 @@ export interface ParsedIntent {
   };
   connectors: string[];
   steps: AgentStep[];
+  instructions?: string;
 }
 
 export interface TokenResponse {

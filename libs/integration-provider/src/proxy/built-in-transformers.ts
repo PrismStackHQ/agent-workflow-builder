@@ -154,7 +154,11 @@ const driveUploadFileBodyBuilder: ProxyActionConfig['bodyBuilder'] = (input) => 
   const body: Record<string, unknown> = { name };
   if (input.folderId) body.parents = [String(input.folderId)];
   if (input.mimeType) body.mimeType = String(input.mimeType);
-  if (input.description || input.content) body.description = String(input.description || input.content);
+  if (input.description || input.content) {
+    const desc = String(input.description || input.content);
+    // Google Drive API limits file.description length
+    body.description = desc.length > 800 ? desc.substring(0, 797) + '...' : desc;
+  }
   if (input.appProperties) body.appProperties = input.appProperties;
   return body;
 };

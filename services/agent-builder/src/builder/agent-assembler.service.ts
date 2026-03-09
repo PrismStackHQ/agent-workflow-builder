@@ -48,6 +48,7 @@ export class AgentAssemblerService {
         triggerType: intent.trigger.type,
         requiredConnections: intent.connectors,
         steps: intent.steps as any,
+        instructions: intent.instructions || null,
         status,
       },
     });

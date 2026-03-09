@@ -97,6 +97,7 @@ export interface AgentPlanPreviewEvent {
   steps: AgentStep[];
   missingConnections: ConnectionInfo[];
   connectorDisplayNames?: Record<string, string>;
+  instructions?: string;
   endUserId?: string;
 }
 
@@ -110,6 +111,7 @@ export interface AgentPlanConfirmedEvent {
   schedule?: string;
   connectors: string[];
   steps: AgentStep[];
+  instructions?: string;
   endUserId?: string;
 }
 
