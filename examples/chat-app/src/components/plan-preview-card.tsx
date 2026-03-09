@@ -3,18 +3,9 @@
 import { useState } from 'react';
 import type { PlanPreviewData } from '@/lib/types';
 
-function providerDisplayName(provider: string): string {
-  const names: Record<string, string> = {
-    gmail: 'Gmail',
-    gdrive: 'Google Drive',
-    'google-drive': 'Google Drive',
-    'google-mail': 'Google Mail',
-    'google-calendar': 'Google Calendar',
-    slack: 'Slack',
-    notion: 'Notion',
-    google_sheets: 'Google Sheets',
-  };
-  return names[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+/** Fallback display name when server doesn't provide one */
+function fallbackDisplayName(provider: string): string {
+  return provider.replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Check if a string value contains a {{step[N].result...}} expression */
@@ -147,7 +138,7 @@ export function PlanPreviewCard({ plan, onConfirm }: PlanPreviewCardProps) {
                   </p>
                   <p className="text-xs text-surface-500 mt-0.5">
                     <span className="font-mono text-surface-400">{step.action}</span>
-                    {' '}via {providerDisplayName(step.connector)}
+                    {' '}via {plan.connectorDisplayNames?.[step.connector] || fallbackDisplayName(step.connector)}
                   </p>
                   {step.params && Object.keys(step.params).length > 0 && (
                     <div className="mt-1.5 text-xs text-surface-500 bg-surface-50 rounded px-2 py-1.5 font-mono space-y-0.5">
@@ -187,7 +178,7 @@ export function PlanPreviewCard({ plan, onConfirm }: PlanPreviewCardProps) {
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                   </svg>
-                  {providerDisplayName(connector)}
+                  {plan.connectorDisplayNames?.[connector] || fallbackDisplayName(connector)}
                 </span>
               ))}
             </div>

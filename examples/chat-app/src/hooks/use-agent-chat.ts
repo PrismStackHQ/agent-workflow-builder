@@ -177,6 +177,16 @@ export function useAgentChat() {
           );
           const missingKeys = missingInfos.map((c) => c.providerKey);
 
+          // Build connector display names from server data + missing connection info
+          const serverDisplayNames = (p.connectorDisplayNames as Record<string, string>) || {};
+          const connectorDisplayNames: Record<string, string> = { ...serverDisplayNames };
+          // Also merge in display names from missing connection infos
+          for (const info of missingInfos) {
+            if (!connectorDisplayNames[info.providerKey]) {
+              connectorDisplayNames[info.providerKey] = info.displayName;
+            }
+          }
+
           const plan: PlanPreviewData = {
             commandId: p.commandId as string,
             name: p.name as string,
@@ -186,6 +196,7 @@ export function useAgentChat() {
             connectors: (p.connectors as string[]) || [],
             steps: planSteps,
             missingConnections: missingKeys,
+            connectorDisplayNames,
             endUserId,
           };
 

@@ -82,6 +82,13 @@ export class BuilderHandler implements OnModuleInit {
             };
           });
 
+          // Build display name map for ALL connectors (not just missing ones)
+          const connectorDisplayNames: Record<string, string> = {};
+          for (const key of intent.connectors) {
+            const ai = integrationLookup.get(key);
+            connectorDisplayNames[key] = ai?.displayName || key;
+          }
+
           const name =
             data.naturalLanguageCommand.length > 50
               ? data.naturalLanguageCommand.substring(0, 47) + '...'
@@ -104,6 +111,7 @@ export class BuilderHandler implements OnModuleInit {
             connectors: intent.connectors,
             steps: intent.steps,
             missingConnections,
+            connectorDisplayNames,
             endUserId: data.endUserId,
           });
 
