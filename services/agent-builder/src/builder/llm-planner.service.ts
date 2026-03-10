@@ -58,6 +58,69 @@ When a later step needs output from an earlier step, use expression syntax in pa
 
 Pipes can be chained: {{step[0].result | filter(type=email) | map(id) | first}}
 
+## Advanced Step Types
+
+### for_each — Iterate Over Items
+Use when you need to run operations on EACH item in an array individually.
+Trigger words: "for each", "one by one", "individually", "every", "each", "all of them"
+
+Step format:
+{
+  action: "for_each",
+  connector: "",
+  params: { items: "{{step[N].result}}", onError: "skip" },
+  description: "For each company, create records",
+  steps: [
+    { action: "...", connector: "...", params: { name: "{{item.fieldName}}" }, description: "..." },
+    { action: "...", connector: "...", params: { id: "{{step[0].result.id}}" }, description: "..." }
+  ]
+}
+
+Inside for_each:
+- {{item}} — current array item
+- {{item.fieldName}} — field of current item
+- {{loop.index}} — current iteration index (0-based)
+- {{step[N].result}} — inner step N's result (within this iteration, NOT outer steps)
+- {{parent[N].result}} — outer step N's result (from the parent workflow scope)
+- {{parent[N].result.field}} — access a field of an outer step result
+
+IMPORTANT: Inside for_each, {{step[N].result}} refers to INNER steps only. To access outer step data, use {{parent[N].result}}. For example, if outer step 1 returns an email with messageId, use {{parent[1].result.id}} inside the loop to reference it.
+
+### llm_transform — AI Data Extraction
+Use when unstructured text needs to be converted to structured data.
+For example: extracting company names, parsing documents, classifying items, summarizing.
+
+IMPORTANT constraints for llm_transform:
+- The prompt MUST only contain TEXT data — never embed base64, binary, or raw file content
+- Reference specific text fields (e.g. {{step[0].result.subject}}, {{step[0].result.body}}) rather than entire result objects
+- Keep referenced data concise — use | map(fieldName) to extract only the fields needed
+- If previous step results are arrays, use | map(relevantField) or | join to extract just the text parts
+- NEVER pass raw attachment data, file downloads, or binary content into the prompt
+
+{
+  action: "llm_transform",
+  connector: "",
+  params: {
+    prompt: "Extract all records from the following text:\n{{step[0].result.textContent}}",
+    outputSchema: {
+      type: "object",
+      properties: {
+        records: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              category: { type: "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  description: "Extract structured records from text"
+}
+
 ## Process
 1. IDENTIFY which connectors the user needs from the catalog
 2. EXTRACT entities: search terms, folder names, file names, recipients, labels, etc.
@@ -80,33 +143,39 @@ CRITICAL: You MUST ALWAYS call submit_plan with the complete plan, even if check
 
 ## Examples
 
-### Example 1: "Search Gmail for receipts and save to a Drive folder"
-→ Step 0: search_emails on gmail, params: { query: "receipts" }
-  Description: "Search Gmail for emails matching 'receipts'"
-→ Step 1: get_email on gmail, params: { messageId: "{{step[0].result[0].id}}" }
-  Description: "Get full details of the first matching email"
-→ Step 2: create_folder on google-drive, params: { folderName: "Receipts" }
-  Description: "Create a 'Receipts' folder in Google Drive"
-→ Step 3: upload_file on google-drive, params: { fileName: "{{step[1].result.subject}}", folderId: "{{step[2].result.id}}", content: "{{step[1].result.snippet}}" }
-  Description: "Save the email content to the new Drive folder"
+The examples below use placeholder connector/action names. In practice, use ONLY the connector keys and action names from the catalog above.
 
-### Example 2: "Find issues labeled bug on GitHub and post a summary to Slack"
-→ Step 0: search_issues on github, params: { query: "label:bug is:open" }
-  Description: "Search GitHub for open issues labeled 'bug'"
-→ Step 1: list_channels on slack, params: { limit: 10 }
-  Description: "List available Slack channels"
-→ Step 2: post_message on slack, params: { channel: "general", text: "Found {{step[0].result | count}} open bugs" }
-  Description: "Post bug summary to Slack"
+### Example 1: Search + Enrich + Save (3-step linear)
+→ Step 0: <search_action> on <connector-a>, params: { query: "..." }
+  Description: "Search for matching items"
+→ Step 1: <get_detail_action> on <connector-a>, params: { id: "{{step[0].result[0].id}}" }
+  Description: "Get full details of the first result"
+→ Step 2: <save_action> on <connector-b>, params: { name: "{{step[1].result.title}}", content: "{{step[1].result.snippet}}" }
+  Description: "Save the item to the destination"
 
-### Example 3: "Find emails about invoices from gmail and save them to a new folder in drive"
-→ Step 0: search_emails on gmail, params: { query: "invoices" }
-  Description: "Search Gmail for emails about invoices"
-→ Step 1: get_email on gmail, params: { messageId: "{{step[0].result[0].id}}" }
-  Description: "Get full content of the first invoice email"
-→ Step 2: create_folder on google-drive, params: { folderName: "Invoices" }
-  Description: "Create an 'Invoices' folder in Google Drive"
-→ Step 3: upload_file on google-drive, params: { fileName: "{{step[1].result.subject}}", folderId: "{{step[2].result.id}}", content: "From: {{step[1].result.from}} — {{step[1].result.snippet}}" }
-  Description: "Save the email data to the new Drive folder"`;
+### Example 2: Search + Summarize with pipes
+→ Step 0: <list_action> on <connector-a>, params: { query: "label:bug is:open" }
+  Description: "List open items matching criteria"
+→ Step 1: <post_action> on <connector-b>, params: { channel: "general", text: "Found {{step[0].result | count}} items" }
+  Description: "Post summary to the destination"
+
+### Example 3: llm_transform — Extract structured data from text
+→ Step 0: <fetch_action> on <connector-a>, params: { id: "..." }
+  Description: "Fetch the source document or record"
+→ Step 1: llm_transform (local), params: { prompt: "Extract all person records from:\n{{step[0].result.textContent}}", outputSchema: { type: "object", properties: { people: { type: "array", items: { type: "object", properties: { name: { type: "string" }, role: { type: "string" } } } } } } }
+  Description: "Extract structured data from text content"
+
+### Example 4: for_each — Process items individually with parent references
+→ Step 0: <search_action> on <connector-a>, params: { query: "..." }
+  Description: "Find items to process"
+→ Step 1: llm_transform (local), params: { prompt: "Categorize these items:\n{{step[0].result | map(title) | join(\\n)}}", outputSchema: { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { title: { type: "string" }, category: { type: "string" } } } } } } }
+  Description: "Categorize items using AI"
+→ Step 2: for_each, params: { items: "{{step[1].result.items}}", onError: "skip" }
+  Description: "For each categorized item, create a record"
+  Inner steps:
+    → 0: <create_action> on <connector-b>, params: { name: "{{item.title}}", category: "{{item.category}}" }
+    → 1: <link_action> on <connector-b>, params: { recordId: "{{step[0].result.id}}", sourceId: "{{parent[0].result[0].id}}" }
+  Note: {{item}} = current loop item, {{step[N].result}} = inner step result, {{parent[N].result}} = outer step result`;
 }
 
 @Injectable()
@@ -199,6 +268,38 @@ export class LlmPlannerService {
     return sections.join('\n\n');
   }
 
+  /**
+   * Build a catalog of existing reusable agents in the workspace
+   * so the LLM can compose them as sub-agent steps.
+   */
+  private async buildAgentCatalog(workspaceId: string): Promise<string> {
+    const agents = await this.prisma.agentDefinition.findMany({
+      where: { workspaceId, status: { in: ['READY', 'SCHEDULED'] } },
+      select: {
+        id: true,
+        name: true,
+        naturalLanguageCommand: true,
+        requiredConnections: true,
+      },
+      take: 20,
+    });
+
+    if (agents.length === 0) return '';
+
+    const lines = agents.map((a) => {
+      const conns = Array.isArray(a.requiredConnections)
+        ? (a.requiredConnections as string[]).join(', ')
+        : '';
+      return `### ${a.id} — "${a.name}"\nOriginal command: "${a.naturalLanguageCommand}"\nConnections: ${conns || 'none'}`;
+    });
+
+    return `\n\n## Available Sub-Agents
+You can invoke existing agents as sub-steps using action "invoke_sub_agent" with connector "" and subAgentId/subAgentName fields.
+Only use sub-agents when the user's request clearly maps to an existing agent's capability. Prefer direct action steps when possible.
+
+${lines.join('\n\n')}`;
+  }
+
   async plan(
     workspaceId: string,
     command: string,
@@ -206,8 +307,11 @@ export class LlmPlannerService {
   ): Promise<ParsedIntent> {
     this.logger.log(`Planning command for workspace ${workspaceId}: "${command}"`);
 
-    const actionCatalog = await this.buildActionCatalog(workspaceId);
-    const systemPrompt = buildSystemPrompt(actionCatalog);
+    const [actionCatalog, agentCatalog] = await Promise.all([
+      this.buildActionCatalog(workspaceId),
+      this.buildAgentCatalog(workspaceId),
+    ]);
+    const systemPrompt = buildSystemPrompt(actionCatalog) + agentCatalog;
 
     const model = this.getModel();
 
@@ -287,10 +391,10 @@ export class LlmPlannerService {
               .describe('Cron expression if triggerType is "cron"'),
             steps: z.array(
               z.object({
-                action: z.string().describe('The action name from the catalog'),
+                action: z.string().describe('The action name from the catalog, or "invoke_sub_agent" for sub-agent steps'),
                 connector: z
                   .string()
-                  .describe('The integration key for this action'),
+                  .describe('The integration key for this action, or "" for sub-agent steps'),
                 params: z
                   .record(z.unknown())
                   .default({})
@@ -298,6 +402,15 @@ export class LlmPlannerService {
                 description: z
                   .string()
                   .describe('Human-readable description of what this step does'),
+                subAgentId: z.string().optional().describe('AgentDefinition ID when action is "invoke_sub_agent"'),
+                subAgentName: z.string().optional().describe('Display name of the sub-agent when action is "invoke_sub_agent"'),
+                steps: z.array(z.object({
+                  action: z.string().describe('The action name for this inner step'),
+                  connector: z.string().describe('The integration key for this inner step'),
+                  params: z.record(z.string()).default({}).describe('Parameters for inner step. Use {{item.field}} for iteration data, {{step[N].result}} for inner step results.'),
+                  description: z.string().describe('Human-readable description of what this inner step does'),
+                })).optional().describe('Nested steps for for_each iterations'),
+                outputSchema: z.record(z.unknown()).optional().describe('JSON Schema for llm_transform structured output'),
               }),
             ),
             extractedEntities: z
@@ -332,12 +445,17 @@ export class LlmPlannerService {
         connector: string;
         params: Record<string, unknown>;
         description?: string;
+        subAgentId?: string;
+        subAgentName?: string;
+        steps?: Array<Record<string, unknown>>;
+        outputSchema?: Record<string, unknown>;
       }>;
       extractedEntities?: Record<string, string>;
     };
 
     // Post-validate: verify each step.action exists in tool registry or proxy registry
     for (const step of plan.steps) {
+      if (['invoke_sub_agent', 'for_each', 'llm_transform'].includes(step.action)) continue;
       const exists = await this.prisma.toolRegistryEntry.findFirst({
         where: { workspaceId, actionName: step.action },
       });
@@ -352,8 +470,9 @@ export class LlmPlannerService {
       this.logger.log(`Extracted entities: ${JSON.stringify(plan.extractedEntities)}`);
     }
 
-    // Extract unique connectors from steps
-    const connectors = [...new Set(plan.steps.map((s) => s.connector))];
+    // Extract unique connectors from steps and nested steps (filter out empty strings)
+    const allSteps = plan.steps.flatMap((s) => [s, ...((s.steps as Array<{ connector?: string }>) || [])]);
+    const connectors = [...new Set(allSteps.map((s) => s.connector).filter(Boolean))] as string[];
 
     const intent: ParsedIntent = {
       trigger: {
@@ -367,6 +486,10 @@ export class LlmPlannerService {
         connector: step.connector,
         params: step.params,
         description: step.description,
+        ...(step.subAgentId && { subAgentId: step.subAgentId }),
+        ...(step.subAgentName && { subAgentName: step.subAgentName }),
+        ...(step.steps && { steps: (step.steps as Array<Record<string, unknown>>).map((s, si) => ({ index: si, action: s.action as string, connector: (s.connector as string) || '', params: (s.params as Record<string, unknown>) || {}, description: s.description as string })) }),
+        ...(step.outputSchema && { outputSchema: step.outputSchema }),
       })),
     };
 

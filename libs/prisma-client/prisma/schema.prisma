@@ -126,6 +126,7 @@ model AgentDefinition {
   requiredConnections    Json        @default("[]")
   steps                  Json        @default("[]")
   instructions           String?     @db.Text
+  planDescription        String?     @db.Text
   status                 AgentStatus @default(DRAFT)
   k8sCronJobName         String?
   k8sNamespace           String?
@@ -163,6 +164,8 @@ model AgentRun {
   pausedAtStepIndex Int?
   pauseReason       String?
   pauseMetadata     Json?
+  parentRunId       String?
+  depth             Int       @default(0)
   resumedAt         DateTime?
   createdAt         DateTime  @default(now())
 

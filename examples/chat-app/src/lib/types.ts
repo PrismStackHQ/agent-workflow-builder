@@ -46,6 +46,16 @@ export interface PlanPreviewData {
     connector: string;
     params: Record<string, unknown>;
     description?: string;
+    subAgentId?: string;
+    subAgentName?: string;
+    steps?: Array<{
+      index: number;
+      action: string;
+      connector: string;
+      params: Record<string, unknown>;
+      description?: string;
+    }>;
+    outputSchema?: Record<string, unknown>;
   }>;
   missingConnections: string[];
   connectorDisplayNames?: Record<string, string>;

@@ -4,6 +4,10 @@ export interface AgentStep {
   connector: string;
   params: Record<string, unknown>;
   description?: string;
+  subAgentId?: string;
+  subAgentName?: string;
+  steps?: AgentStep[];                    // nested steps for for_each
+  outputSchema?: Record<string, unknown>; // structured output for llm_transform
 }
 
 export interface ParsedIntent {

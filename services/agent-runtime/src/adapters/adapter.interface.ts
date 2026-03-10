@@ -8,6 +8,10 @@ export interface StepContext {
   endUserConnectionId: string;
   tokens: Map<string, TokenResponse>;
   previousResults: unknown[];
+  depth?: number;
+  iterationItem?: unknown;      // Current item in for_each loop
+  iterationIndex?: number;      // Current index in for_each loop
+  parentResults?: unknown[];    // Parent scope's previousResults
 }
 
 export interface IStepAdapter {

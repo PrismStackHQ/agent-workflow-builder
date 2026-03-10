@@ -5,6 +5,7 @@ import { IntegrationProviderModule } from '@agent-workflow/integration-provider'
 import { RuntimeService } from './runtime.service';
 import { RuntimeHandler } from './runtime.handler';
 import { ReceiptFilterAdapter } from './adapters/receipt-filter.adapter';
+import { LlmTransformAdapter } from './adapters/llm-transform.adapter';
 import { ExpressionEngine } from './expression-engine.service';
 
 @Module({
@@ -19,6 +20,7 @@ import { ExpressionEngine } from './expression-engine.service';
     RuntimeService,
     RuntimeHandler,
     ReceiptFilterAdapter,
+    LlmTransformAdapter,
     ExpressionEngine,
   ],
 })

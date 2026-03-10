@@ -34,6 +34,8 @@ export const SUBJECTS = {
   RUNTIME_RUN_PAUSED: 'runtime.run.paused',
   RUNTIME_RUN_RESUME_REQUESTED: 'runtime.run.resume.requested',
   RUNTIME_RUN_RESUMED: 'runtime.run.resumed',
+  RUNTIME_RUN_SUB_AGENT_STARTED: 'runtime.run.sub_agent.started',
+  RUNTIME_RUN_ITERATION_PROGRESS: 'runtime.run.iteration.progress',
 
   // Tools
   TOOL_REGISTRY_SYNCED: 'tools.registry.synced',

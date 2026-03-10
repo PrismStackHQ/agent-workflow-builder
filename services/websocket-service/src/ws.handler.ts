@@ -12,6 +12,8 @@ import type {
   AgentRunFailedEvent,
   AgentRunPausedEvent,
   AgentRunResumedEvent,
+  AgentRunSubAgentStartedEvent,
+  AgentRunIterationProgressEvent,
   OrgCreatedEvent,
   ConnectionEndpointConfiguredEvent,
   RagConfiguredEvent,
@@ -177,6 +179,44 @@ export class WsHandler implements OnModuleInit {
             agentId: data.agentId,
             runId: data.runId,
             resumedAt: data.resumedAt,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunSubAgentStartedEvent>(
+      SUBJECTS.RUNTIME_RUN_SUB_AGENT_STARTED,
+      'ws-run-sub-agent-started',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_run_sub_agent_started',
+          payload: {
+            agentId: data.agentId,
+            runId: data.runId,
+            stepIndex: data.stepIndex,
+            childAgentId: data.childAgentId,
+            childRunId: data.childRunId,
+            childAgentName: data.childAgentName,
+            depth: data.depth,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunIterationProgressEvent>(
+      SUBJECTS.RUNTIME_RUN_ITERATION_PROGRESS,
+      'ws-run-iteration-progress',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_run_iteration_progress',
+          payload: {
+            agentId: data.agentId,
+            runId: data.runId,
+            stepIndex: data.stepIndex,
+            iterationIndex: data.iterationIndex,
+            totalItems: data.totalItems,
+            status: data.status,
+            itemLabel: data.itemLabel,
           },
         });
       },

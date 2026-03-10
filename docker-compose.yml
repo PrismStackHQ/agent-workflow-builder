@@ -87,9 +87,9 @@ services:
   agent-builder:
     build:
       context: .
-      dockerfile: services/agent-builder/Dockerfile
+      dockerfile: services/agent-builder-py/Dockerfile
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/agent_workflow
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/agent_workflow
       NATS_URL: nats://nats:4222
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
@@ -115,10 +115,11 @@ services:
   agent-runtime:
     build:
       context: .
-      dockerfile: services/agent-runtime/Dockerfile
+      dockerfile: services/agent-runtime-py/Dockerfile
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/agent_workflow
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/agent_workflow
       NATS_URL: nats://nats:4222
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

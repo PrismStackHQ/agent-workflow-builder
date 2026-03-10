@@ -28,6 +28,13 @@ import type { StepContext } from './adapters/adapter.interface';
  *   {{step[0].result | flatten}}               → flatten nested arrays
  *   "Hello {{step[0].result.name}}"            → string interpolation
  *
+ * Inside for_each loops:
+ *   {{item}}                                     → current iteration item
+ *   {{item.fieldName}}                           → field of current item
+ *   {{loop.index}}                               → current iteration index (0-based)
+ *   {{parent[N].result}}                         → outer step N's result (from parent scope)
+ *   {{parent[N].result.field}}                   → field of outer step N's result
+ *
  * Pipes can be chained: {{step[0].result | filter(type=email) | map(id) | first}}
  */
 @Injectable()
@@ -35,7 +42,7 @@ export class ExpressionEngine {
   private readonly logger = new Logger(ExpressionEngine.name);
 
   /** Regex matching a complete {{...}} expression */
-  private static readonly EXPR_PATTERN = /\{\{(step\[\d+\]\.result(?:[.\[][^\s|}]+)?(?:\s*\|\s*\w+(?:\([^)]*\))?)*)\}\}/g;
+  private static readonly EXPR_PATTERN = /\{\{((?:step\[\d+\]\.result|parent\[\d+\]\.result|item|loop\.index)(?:[.\[][^\s|}]+)?(?:\s*\|\s*\w+(?:\([^)]*\))?)*)\}\}/g;
 
   /** Regex for parsing step reference: step[N].result[.path] or step[N].result[M].path */
   private static readonly STEP_REF = /^step\[(\d+)\]\.result(?:([.\[].+))?$/;
@@ -51,21 +58,21 @@ export class ExpressionEngine {
     const resolved: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(params)) {
-      resolved[key] = this.resolveValue(value, context.previousResults);
+      resolved[key] = this.resolveValue(value, context);
     }
 
     return resolved;
   }
 
-  private resolveValue(value: unknown, results: unknown[]): unknown {
+  private resolveValue(value: unknown, context: StepContext): unknown {
     if (typeof value !== 'string') {
       if (Array.isArray(value)) {
-        return value.map((item) => this.resolveValue(item, results));
+        return value.map((item) => this.resolveValue(item, context));
       }
       if (value && typeof value === 'object') {
         const resolved: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(value)) {
-          resolved[k] = this.resolveValue(v, results);
+          resolved[k] = this.resolveValue(v, context);
         }
         return resolved;
       }
@@ -76,13 +83,13 @@ export class ExpressionEngine {
     const trimmed = value.trim();
     if (trimmed.startsWith('{{') && trimmed.endsWith('}}') && this.countExpressions(trimmed) === 1) {
       const inner = trimmed.slice(2, -2).trim();
-      return this.evaluateExpression(inner, results);
+      return this.evaluateExpression(inner, context);
     }
 
     // String interpolation: replace {{...}} within a larger string
     if (trimmed.includes('{{')) {
       return trimmed.replace(ExpressionEngine.EXPR_PATTERN, (_, expr) => {
-        const result = this.evaluateExpression(expr.trim(), results);
+        const result = this.evaluateExpression(expr.trim(), context);
         if (result === undefined || result === null) return '';
         if (typeof result === 'object') return JSON.stringify(result);
         return String(result);
@@ -97,36 +104,63 @@ export class ExpressionEngine {
     return matches ? matches.length : 0;
   }
 
-  private evaluateExpression(expr: string, results: unknown[]): unknown {
-    // Split expression into step reference and pipe chain
-    // e.g. "step[0].result.id | filter(type=invoice) | map(name)"
+  private evaluateExpression(expr: string, context: StepContext): unknown {
+    // Split expression into reference and pipe chain
     const pipeIndex = expr.indexOf('|');
-    const stepRefPart = pipeIndex >= 0 ? expr.substring(0, pipeIndex).trim() : expr.trim();
+    const refPart = pipeIndex >= 0 ? expr.substring(0, pipeIndex).trim() : expr.trim();
     const pipesPart = pipeIndex >= 0 ? expr.substring(pipeIndex) : '';
 
-    // Parse step reference
-    const stepMatch = stepRefPart.match(ExpressionEngine.STEP_REF);
-    if (!stepMatch) {
-      this.logger.warn(`Invalid expression: "${expr}" — expected step[N].result[.path]`);
-      return undefined;
-    }
+    let value: unknown;
 
-    const stepIdx = parseInt(stepMatch[1], 10);
-    // Path may start with "." or "[" — strip leading dot for lodash _.get
-    const rawPath = stepMatch[2]; // may be undefined, e.g. ".id" or "[0].id"
-    const path = rawPath?.startsWith('.') ? rawPath.slice(1) : rawPath;
+    if (refPart === 'item' || refPart.startsWith('item.') || refPart.startsWith('item[')) {
+      // Iteration item reference: {{item}}, {{item.name}}, {{item[0]}}
+      value = context.iterationItem;
+      if (refPart !== 'item') {
+        const path = refPart.slice(4); // strip "item"
+        const cleanPath = path.startsWith('.') ? path.slice(1) : path;
+        if (cleanPath) value = _.get(value, cleanPath);
+      }
+    } else if (refPart === 'loop.index') {
+      // Iteration index: {{loop.index}}
+      value = context.iterationIndex ?? 0;
+    } else if (refPart.startsWith('parent[')) {
+      // Parent scope step reference: {{parent[N].result[.path]}}
+      const parentMatch = refPart.match(/^parent\[(\d+)\]\.result(?:([.\[].+))?$/);
+      if (!parentMatch) {
+        this.logger.warn(`Invalid parent expression: "${expr}"`);
+        return undefined;
+      }
+      const parentIdx = parseInt(parentMatch[1], 10);
+      const rawPath = parentMatch[2];
+      const path = rawPath?.startsWith('.') ? rawPath.slice(1) : rawPath;
+      const parentResults = context.parentResults || [];
+      if (parentIdx >= parentResults.length) {
+        this.logger.warn(`Expression references parent[${parentIdx}] but only ${parentResults.length} parent results available`);
+        return undefined;
+      }
+      value = parentResults[parentIdx];
+      if (path) value = _.get(value, path);
+    } else {
+      // Step reference: step[N].result[.path]
+      const stepMatch = refPart.match(ExpressionEngine.STEP_REF);
+      if (!stepMatch) {
+        this.logger.warn(`Invalid expression: "${expr}" — expected step[N].result[.path], item, or loop.index`);
+        return undefined;
+      }
 
-    if (stepIdx >= results.length) {
-      this.logger.warn(`Expression references step[${stepIdx}] but only ${results.length} results available`);
-      return undefined;
-    }
+      const stepIdx = parseInt(stepMatch[1], 10);
+      const rawPath = stepMatch[2];
+      const path = rawPath?.startsWith('.') ? rawPath.slice(1) : rawPath;
 
-    // Get the base value
-    let value: unknown = results[stepIdx];
+      if (stepIdx >= context.previousResults.length) {
+        this.logger.warn(`Expression references step[${stepIdx}] but only ${context.previousResults.length} results available`);
+        return undefined;
+      }
 
-    // Apply dot-path if present
-    if (path) {
-      value = _.get(value, path);
+      value = context.previousResults[stepIdx];
+      if (path) {
+        value = _.get(value, path);
+      }
     }
 
     // Apply pipe chain

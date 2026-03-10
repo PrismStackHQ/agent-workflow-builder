@@ -7,6 +7,7 @@ import type { AgentStep } from '@agent-workflow/shared-types';
 import { ProviderExecutorService } from '@agent-workflow/integration-provider';
 import { IStepAdapter, StepContext } from './adapters/adapter.interface';
 import { ReceiptFilterAdapter } from './adapters/receipt-filter.adapter';
+import { LlmTransformAdapter } from './adapters/llm-transform.adapter';
 import { ExpressionEngine } from './expression-engine.service';
 
 @Injectable()
@@ -20,10 +21,12 @@ export class RuntimeService {
     private readonly providerExecutor: ProviderExecutorService,
     private readonly expressionEngine: ExpressionEngine,
     receiptFilter: ReceiptFilterAdapter,
+    llmTransform: LlmTransformAdapter,
   ) {
     // Local adapters for compute-only steps (no external API call needed)
     this.localAdapterMap = new Map<string, IStepAdapter>([
       [receiptFilter.action, receiptFilter],
+      [llmTransform.action, llmTransform],
     ]);
   }
 
@@ -71,6 +74,7 @@ export class RuntimeService {
       endUserConnectionId: connId,
       tokens: new Map(),
       previousResults: [],
+      depth: 0,
     };
 
     await this.executeSteps(runId, orgId, wsId, agent, steps, context, 0);
@@ -117,6 +121,7 @@ export class RuntimeService {
       endUserConnectionId: connectionId || run.endUserConnectionId || '',
       tokens: new Map(),
       previousResults: [],
+      depth: 0,
     };
 
     this.logger.log(`Resuming run ${runId} from step ${startIndex}`);
@@ -258,7 +263,173 @@ export class RuntimeService {
     return null;
   }
 
+  private async executeSubAgent(step: AgentStep, context: StepContext): Promise<unknown> {
+    const MAX_DEPTH = 5;
+    const currentDepth = context.depth ?? 0;
+
+    if (currentDepth >= MAX_DEPTH) {
+      throw new Error(`Sub-agent depth limit exceeded (max ${MAX_DEPTH})`);
+    }
+
+    const childAgent = await this.prisma.agentDefinition.findUnique({
+      where: { id: step.subAgentId },
+    });
+    if (!childAgent) throw new Error(`Sub-agent ${step.subAgentId} not found`);
+    if (childAgent.workspaceId !== context.workspaceId) {
+      throw new Error(`Sub-agent ${step.subAgentId} is in a different workspace`);
+    }
+
+    const childRunId = randomUUID();
+    const childSteps = childAgent.steps as unknown as AgentStep[];
+
+    await this.prisma.agentRun.create({
+      data: {
+        id: childRunId,
+        agentId: step.subAgentId!,
+        status: 'RUNNING',
+        startedAt: new Date(),
+        endUserConnectionId: context.endUserConnectionId || null,
+        parentRunId: context.runId,
+        depth: currentDepth + 1,
+      },
+    });
+
+    await this.nats.publish(SUBJECTS.RUNTIME_RUN_SUB_AGENT_STARTED, {
+      orgId: context.orgId,
+      workspaceId: context.workspaceId,
+      agentId: context.agentId,
+      runId: context.runId,
+      stepIndex: step.index,
+      childAgentId: step.subAgentId!,
+      childRunId,
+      childAgentName: step.subAgentName || childAgent.name,
+      depth: currentDepth + 1,
+    });
+
+    const childContext: StepContext = {
+      orgId: context.orgId,
+      workspaceId: context.workspaceId,
+      agentId: step.subAgentId!,
+      runId: childRunId,
+      endUserConnectionId: context.endUserConnectionId,
+      tokens: context.tokens,
+      previousResults: [],
+      depth: currentDepth + 1,
+    };
+
+    await this.executeSteps(childRunId, context.orgId, context.workspaceId, childAgent, childSteps, childContext, 0);
+
+    // Check if child paused (missing connection) — propagate as error to parent
+    const childRun = await this.prisma.agentRun.findUnique({ where: { id: childRunId } });
+    if (childRun?.status === 'PAUSED') {
+      throw new Error(`Sub-agent "${step.subAgentName || childAgent.name}" paused: missing connection`);
+    }
+
+    return childContext.previousResults.length > 0
+      ? childContext.previousResults[childContext.previousResults.length - 1]
+      : null;
+  }
+
+  private async executeForEach(step: AgentStep, context: StepContext): Promise<unknown[]> {
+    const resolvedParams = this.expressionEngine.resolve(step.params, context);
+    const items = resolvedParams.items;
+
+    if (!Array.isArray(items)) {
+      throw new Error(`for_each: expected array for "items", got ${typeof items}`);
+    }
+
+    const onError = (resolvedParams.onError as string) || 'fail';
+    const results: unknown[] = [];
+
+    this.logger.log(`for_each: processing ${items.length} items (onError: ${onError})`);
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+
+      await this.nats.publish(SUBJECTS.RUNTIME_RUN_ITERATION_PROGRESS, {
+        orgId: context.orgId,
+        workspaceId: context.workspaceId,
+        agentId: context.agentId,
+        runId: context.runId,
+        stepIndex: step.index,
+        iterationIndex: i,
+        totalItems: items.length,
+        status: 'started',
+        itemLabel: typeof item === 'object' ? JSON.stringify(item).substring(0, 100) : String(item).substring(0, 100),
+      });
+
+      try {
+        const childContext: StepContext = {
+          ...context,
+          previousResults: [],
+          parentResults: context.previousResults,
+          iterationItem: item,
+          iterationIndex: i,
+        };
+
+        for (const innerStep of step.steps!) {
+          // Check connection for provider-backed inner steps
+          if (innerStep.connector && !this.localAdapterMap.has(innerStep.action)) {
+            const connCheck = await this.checkStepConnection(innerStep, childContext);
+            if (!connCheck) {
+              throw new Error(`Missing connection for ${innerStep.connector} in for_each iteration`);
+            }
+          }
+
+          const result = await this.executeStep(innerStep, childContext);
+          childContext.previousResults.push(result);
+        }
+
+        const iterResult = childContext.previousResults.length > 0
+          ? childContext.previousResults[childContext.previousResults.length - 1]
+          : null;
+        results.push(iterResult);
+
+        await this.nats.publish(SUBJECTS.RUNTIME_RUN_ITERATION_PROGRESS, {
+          orgId: context.orgId,
+          workspaceId: context.workspaceId,
+          agentId: context.agentId,
+          runId: context.runId,
+          stepIndex: step.index,
+          iterationIndex: i,
+          totalItems: items.length,
+          status: 'completed',
+        });
+      } catch (err) {
+        if (onError === 'skip') {
+          this.logger.warn(`for_each: skipping item ${i} after error: ${err}`);
+          results.push(null);
+
+          await this.nats.publish(SUBJECTS.RUNTIME_RUN_ITERATION_PROGRESS, {
+            orgId: context.orgId,
+            workspaceId: context.workspaceId,
+            agentId: context.agentId,
+            runId: context.runId,
+            stepIndex: step.index,
+            iterationIndex: i,
+            totalItems: items.length,
+            status: 'failed',
+          });
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return results;
+  }
+
   private async executeStep(step: AgentStep, context: StepContext): Promise<unknown> {
+    // for_each iteration
+    if (step.action === 'for_each' && step.steps?.length) {
+      return this.executeForEach(step, context);
+    }
+
+    // Sub-agent invocation
+    if (step.action === 'invoke_sub_agent' && step.subAgentId) {
+      return this.executeSubAgent(step, context);
+    }
+
     // Resolve dynamic expressions in params (e.g. {{step[0].result.id}})
     const resolvedParams = this.expressionEngine.resolve(step.params, context);
     this.logger.log(`Step ${step.index} resolved params: ${JSON.stringify(resolvedParams)}`);

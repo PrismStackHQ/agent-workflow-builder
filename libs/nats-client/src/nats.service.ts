@@ -72,7 +72,7 @@ export class NatsService implements OnModuleInit, OnModuleDestroy {
     opts.manualAck();
     opts.ackExplicit();
     opts.deliverTo(createInbox());
-    opts.deliverAll();
+    opts.deliverNew();
 
     const sub = await this.js.subscribe(subject, opts);
     this.logger.log(`Subscribed to ${subject} as ${durableName}`);

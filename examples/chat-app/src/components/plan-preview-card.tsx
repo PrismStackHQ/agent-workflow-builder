@@ -8,9 +8,9 @@ function fallbackDisplayName(provider: string): string {
   return provider.replace(/-\d+$/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Check if a string value contains a {{step[N].result...}} expression */
+/** Check if a string value contains a {{...}} expression */
 function isExpression(val: string): boolean {
-  return /\{\{step\[\d+\]\.result/.test(val);
+  return /\{\{(?:step\[\d+\]\.result|parent\[\d+\]\.result|item|loop\.index)/.test(val);
 }
 
 /** Parse a step reference like {{step[0].result.id}} and return the step number */
@@ -129,36 +129,124 @@ export function PlanPreviewCard({ plan, onConfirm }: PlanPreviewCardProps) {
               {/* Data flow arrow between steps */}
               {i > 0 && <DataFlowArrow />}
 
-              <div className="flex items-start gap-3 bg-white rounded-lg border border-surface-200 p-3">
-                <div className="shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold">
+              <div className={`flex items-start gap-3 bg-white rounded-lg border p-3 ${
+                step.action === 'invoke_sub_agent' ? 'border-violet-200' :
+                step.action === 'for_each' ? 'border-teal-200' :
+                step.action === 'llm_transform' ? 'border-amber-200' :
+                'border-surface-200'
+              }`}>
+                <div className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  step.action === 'invoke_sub_agent' ? 'bg-violet-100 text-violet-700' :
+                  step.action === 'for_each' ? 'bg-teal-100 text-teal-700' :
+                  step.action === 'llm_transform' ? 'bg-amber-100 text-amber-700' :
+                  'bg-primary-100 text-primary-700'
+                }`}>
                   {i + 1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-surface-800">
-                    {step.description || step.action}
-                  </p>
-                  <p className="text-xs text-surface-500 mt-0.5">
-                    <span className="font-mono text-surface-400">{step.action}</span>
-                    {' '}via {plan.connectorDisplayNames?.[step.connector] || fallbackDisplayName(step.connector)}
-                  </p>
-                  {step.params && Object.keys(step.params).length > 0 && (
-                    <div className="mt-1.5 text-xs text-surface-500 bg-surface-50 rounded px-2 py-1.5 font-mono space-y-0.5">
-                      {Object.entries(step.params)
-                        .slice(0, 4)
-                        .map(([key, val]) => (
-                          <div key={key} className="flex items-center gap-1 overflow-hidden">
-                            <span className="text-surface-400 shrink-0">{key}:</span>
-                            <span className="truncate">
-                              <ParamValue value={val} />
-                            </span>
-                          </div>
-                        ))}
-                      {Object.keys(step.params).length > 4 && (
-                        <div className="text-surface-300">
-                          +{Object.keys(step.params).length - 4} more
+                  {step.action === 'invoke_sub_agent' ? (
+                    <>
+                      <p className="text-sm font-medium text-surface-800">
+                        {step.subAgentName || step.description || 'Sub-agent'}
+                      </p>
+                      <p className="text-xs text-violet-600 mt-0.5 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                        </svg>
+                        Sub-agent workflow
+                      </p>
+                      {step.description && step.subAgentName && (
+                        <p className="text-xs text-surface-500 mt-0.5">{step.description}</p>
+                      )}
+                    </>
+                  ) : step.action === 'for_each' ? (
+                    <>
+                      <p className="text-sm font-medium text-surface-800">
+                        {step.description || 'For each item'}
+                      </p>
+                      <p className="text-xs text-teal-600 mt-0.5 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                        </svg>
+                        Loop — processes each item individually
+                        {step.params?.onError === 'skip' && (
+                          <span className="ml-1 px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded text-[10px] font-medium border border-teal-200">skip on error</span>
+                        )}
+                      </p>
+                      {/* Nested steps */}
+                      {step.steps && step.steps.length > 0 && (
+                        <div className="mt-2 ml-1 pl-3 border-l-2 border-teal-200 space-y-1.5">
+                          {step.steps.map((innerStep, j) => (
+                            <div key={j} className="flex items-start gap-2 bg-teal-50/50 rounded p-2 border border-teal-100">
+                              <div className="shrink-0 w-4 h-4 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-[9px] font-bold mt-0.5">
+                                {j + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-surface-700">
+                                  {innerStep.description || innerStep.action}
+                                </p>
+                                <p className="text-[10px] text-surface-400 mt-0.5">
+                                  <span className="font-mono">{innerStep.action}</span>
+                                  {innerStep.connector && <> via {plan.connectorDisplayNames?.[innerStep.connector] || fallbackDisplayName(innerStep.connector)}</>}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
-                    </div>
+                    </>
+                  ) : step.action === 'llm_transform' ? (
+                    <>
+                      <p className="text-sm font-medium text-surface-800">
+                        {step.description || 'AI data extraction'}
+                      </p>
+                      <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                        </svg>
+                        AI-powered transformation
+                        {step.params?.outputSchema && (
+                          <span className="ml-1 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px] font-medium border border-amber-200">structured output</span>
+                        )}
+                      </p>
+                      {step.params?.prompt && (
+                        <div className="mt-1.5 text-xs text-surface-500 bg-amber-50/50 rounded px-2 py-1.5 border border-amber-100">
+                          <span className="text-surface-400">prompt:</span>{' '}
+                          <span className="truncate">
+                            <ParamValue value={String(step.params.prompt).substring(0, 120) + (String(step.params.prompt).length > 120 ? '...' : '')} />
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-surface-800">
+                        {step.description || step.action}
+                      </p>
+                      <p className="text-xs text-surface-500 mt-0.5">
+                        <span className="font-mono text-surface-400">{step.action}</span>
+                        {' '}via {plan.connectorDisplayNames?.[step.connector] || fallbackDisplayName(step.connector)}
+                      </p>
+                      {step.params && Object.keys(step.params).length > 0 && (
+                        <div className="mt-1.5 text-xs text-surface-500 bg-surface-50 rounded px-2 py-1.5 font-mono space-y-0.5">
+                          {Object.entries(step.params)
+                            .slice(0, 4)
+                            .map(([key, val]) => (
+                              <div key={key} className="flex items-center gap-1 overflow-hidden">
+                                <span className="text-surface-400 shrink-0">{key}:</span>
+                                <span className="truncate">
+                                  <ParamValue value={val} />
+                                </span>
+                              </div>
+                            ))}
+                          {Object.keys(step.params).length > 4 && (
+                            <div className="text-surface-300">
+                              +{Object.keys(step.params).length - 4} more
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

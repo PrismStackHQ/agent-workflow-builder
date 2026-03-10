@@ -225,6 +225,32 @@ export interface AgentRunResumedEvent {
   resumedAt: string;
 }
 
+// Sub-agent events
+export interface AgentRunSubAgentStartedEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  stepIndex: number;
+  childAgentId: string;
+  childRunId: string;
+  childAgentName: string;
+  depth: number;
+}
+
+// Iteration events
+export interface AgentRunIterationProgressEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  stepIndex: number;
+  iterationIndex: number;
+  totalItems: number;
+  status: 'started' | 'completed' | 'failed';
+  itemLabel?: string;
+}
+
 // Tool registry events
 export interface ToolRegistrySyncedEvent {
   orgId: string;

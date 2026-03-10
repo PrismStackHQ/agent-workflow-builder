@@ -33,6 +33,9 @@ export function useAgentChat() {
   // Accumulate step results during a run for the final results card
   const runResultsRef = useRef<WorkflowResultItem[]>([]);
 
+  // Deduplicate plan previews (NATS JetStream may redeliver)
+  const seenCommandIdsRef = useRef<Set<string>>(new Set());
+
   // Connect WebSocket
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3002/ws';
@@ -165,6 +168,11 @@ export function useAgentChat() {
           break;
 
         case 'agent_plan_preview': {
+          // Deduplicate — NATS JetStream may redeliver on reconnect
+          const cmdId = p.commandId as string;
+          if (seenCommandIdsRef.current.has(cmdId)) break;
+          seenCommandIdsRef.current.add(cmdId);
+
           const planSteps = (p.steps as any[]) || [];
           const rawMissing = (p.missingConnections as (ConnectionInfoFromServer | string)[]) || [];
           const endUserId = (p.endUserId as string) || process.env.NEXT_PUBLIC_END_USER_ID || '';
@@ -309,23 +317,23 @@ export function useAgentChat() {
         case 'agent_run_started':
           currentRunRef.current = p.runId as string;
           runResultsRef.current = [];
-          addMessage({
-            id: uid(),
-            role: 'agent',
+          // Update the existing "Creating agent" message instead of adding a new one
+          updateLastAgentMessage((m) => ({
+            ...m,
             content: 'Running your workflow now...',
-            timestamp: new Date(),
-            status: 'processing',
-            agentId: p.agentId as string,
+            status: 'processing' as const,
+            agentId: (p.agentId as string) || m.agentId,
             runId: p.runId as string,
             steps: [
+              ...(m.steps || []),
               {
                 id: uid(),
                 label: 'Workflow started',
-                status: 'completed',
-                icon: 'play',
+                status: 'completed' as const,
+                icon: 'play' as const,
               },
             ],
-          });
+          }));
           break;
 
         case 'agent_run_step_completed': {
@@ -359,14 +367,14 @@ export function useAgentChat() {
           setProcessing(false);
           pendingPlanRef.current = null;
           runResultsRef.current = [];
-          addMessage({
-            id: uid(),
-            role: 'agent',
+
+          // Update the existing workflow message with final results
+          updateLastAgentMessage((m) => ({
+            ...m,
             content: (p.summary as string) || 'Workflow completed successfully!',
-            timestamp: new Date(),
-            status: 'complete',
-            agentId: p.agentId as string,
-            runId: p.runId as string,
+            status: 'complete' as const,
+            agentId: (p.agentId as string) || m.agentId,
+            runId: (p.runId as string) || m.runId,
             elapsedMs: elapsed,
             workflowResults: collectedResults.length > 0 ? collectedResults : undefined,
             nextActions: {
@@ -375,31 +383,51 @@ export function useAgentChat() {
               workflowName: (p.name as string) || undefined,
             },
             steps: [
+              ...(m.steps || []).map((s) =>
+                s.status === 'running'
+                  ? { ...s, status: 'completed' as const, icon: 'check' as const }
+                  : s,
+              ),
               {
                 id: uid(),
                 label: 'Completed successfully',
-                status: 'completed',
-                icon: 'check',
+                status: 'completed' as const,
+                icon: 'check' as const,
               },
             ],
-          });
+          }));
           break;
         }
 
-        case 'agent_run_failed':
+        case 'agent_run_failed': {
           setProcessing(false);
           pendingPlanRef.current = null;
           runResultsRef.current = [];
-          addMessage({
-            id: uid(),
-            role: 'agent',
-            content: `Something went wrong: ${(p.error as string) || 'Unknown error'}`,
-            timestamp: new Date(),
-            status: 'error',
-            agentId: p.agentId as string,
-            runId: p.runId as string,
-          });
+          const errorMsg = (p.error as string) || 'Unknown error';
+
+          // Update the existing workflow message instead of adding a new one
+          updateLastAgentMessage((m) => ({
+            ...m,
+            content: `Something went wrong: ${errorMsg}`,
+            status: 'error' as const,
+            agentId: (p.agentId as string) || m.agentId,
+            runId: (p.runId as string) || m.runId,
+            steps: [
+              ...(m.steps || []).map((s) =>
+                s.status === 'running'
+                  ? { ...s, status: 'failed' as const, icon: 'zap' as const }
+                  : s,
+              ),
+              {
+                id: uid(),
+                label: errorMsg.length > 80 ? errorMsg.substring(0, 77) + '...' : errorMsg,
+                status: 'failed' as const,
+                icon: 'zap' as const,
+              },
+            ],
+          }));
           break;
+        }
 
         case 'agent_run_paused':
           addMessage({
@@ -445,6 +473,49 @@ export function useAgentChat() {
                 icon: 'play',
               },
             ],
+          });
+          break;
+
+        case 'agent_run_iteration_progress': {
+          const status = p.status as string;
+          const idx = p.iterationIndex as number;
+          const total = p.totalItems as number;
+          const itemLabel = p.itemLabel as string | undefined;
+          if (status === 'started') {
+            addStepToLastAgent({
+              id: uid(),
+              label: `Processing item ${idx + 1} of ${total}${itemLabel ? ` — ${itemLabel.substring(0, 50)}` : ''}`,
+              status: 'running',
+              icon: 'play',
+            });
+          } else if (status === 'completed') {
+            updateLastAgentMessage((m) => ({
+              ...m,
+              steps: (m.steps || []).map((s) =>
+                s.status === 'running' && s.label?.includes(`item ${idx + 1}`)
+                  ? { ...s, status: 'completed' as const, icon: 'check' as const }
+                  : s,
+              ),
+            }));
+          } else if (status === 'failed') {
+            updateLastAgentMessage((m) => ({
+              ...m,
+              steps: (m.steps || []).map((s) =>
+                s.status === 'running' && s.label?.includes(`item ${idx + 1}`)
+                  ? { ...s, status: 'failed' as const, icon: 'zap' as const }
+                  : s,
+              ),
+            }));
+          }
+          break;
+        }
+
+        case 'agent_run_sub_agent_started':
+          addStepToLastAgent({
+            id: uid(),
+            label: `Running sub-agent: ${p.childAgentName as string}`,
+            status: 'running',
+            icon: 'play',
           });
           break;
 
