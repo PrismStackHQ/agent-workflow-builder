@@ -462,46 +462,87 @@ export function useAgentChat() {
 
         case 'agent_run_succeeded': {
           const elapsed = Date.now() - startTimeRef.current;
+          const summary = (p.summary as string) || 'Workflow completed successfully!';
           setProcessing(false);
           pendingPlanRef.current = null;
           runResultsRef.current = [];
 
-          // Mark all processing agent messages as complete
-          setMessages((prev) => prev.map((m) =>
-            m.role === 'agent' && m.status === 'processing'
-              ? {
-                  ...m,
-                  status: 'complete' as const,
-                  steps: (m.steps || []).map((s) =>
-                    s.status === 'running'
-                      ? { ...s, status: 'completed' as const, icon: 'check' as const }
-                      : s,
-                  ),
-                }
-              : m,
-          ));
+          // Replace the last agent message (which is the thinking/summary duplicate)
+          // with a single final completion message containing the formatted summary
+          setMessages((prev) => {
+            // Mark all processing messages as complete
+            const updated = prev.map((m) =>
+              m.role === 'agent' && m.status === 'processing'
+                ? {
+                    ...m,
+                    status: 'complete' as const,
+                    steps: (m.steps || []).map((s) =>
+                      s.status === 'running'
+                        ? { ...s, status: 'completed' as const, icon: 'check' as const }
+                        : s,
+                    ),
+                  }
+                : m,
+            );
 
-          // Add a final completion message with summary
-          addMessage({
-            id: uid(),
-            role: 'agent',
-            content: (p.summary as string) || 'Workflow completed successfully!',
-            timestamp: new Date(),
-            status: 'complete',
-            agentId: (p.agentId as string) || currentAgentRef.current || undefined,
-            runId: (p.runId as string) || currentRunRef.current || undefined,
-            elapsedMs: elapsed,
-            nextActions: {
-              agentId: p.agentId as string,
-              runId: p.runId as string,
-              workflowName: (p.name as string) || undefined,
-            },
-            steps: [{
-              id: uid(),
-              label: 'Completed successfully',
-              status: 'completed' as const,
-              icon: 'check' as const,
-            }],
+            // Find the last agent message — if it's a thinking message (no steps, no cards),
+            // replace its content with the summary instead of adding a duplicate
+            const lastAgentIdx = [...updated].reverse().findIndex((m) => m.role === 'agent');
+            if (lastAgentIdx !== -1) {
+              const realIdx = updated.length - 1 - lastAgentIdx;
+              const lastMsg = updated[realIdx];
+              const isThinkingMsg = !lastMsg.steps?.length && !lastMsg.planPreview && !lastMsg.connectionCard;
+
+              if (isThinkingMsg) {
+                // Replace the thinking message with the final summary
+                updated[realIdx] = {
+                  ...lastMsg,
+                  content: summary,
+                  status: 'complete' as const,
+                  elapsedMs: elapsed,
+                  agentId: (p.agentId as string) || currentAgentRef.current || undefined,
+                  runId: (p.runId as string) || currentRunRef.current || undefined,
+                  nextActions: {
+                    agentId: p.agentId as string,
+                    runId: p.runId as string,
+                    workflowName: (p.name as string) || undefined,
+                  },
+                  steps: [{
+                    id: uid(),
+                    label: 'Completed successfully',
+                    status: 'completed' as const,
+                    icon: 'check' as const,
+                  }],
+                };
+                return updated;
+              }
+            }
+
+            // Fallback: add a new message if no thinking message to replace
+            return [
+              ...updated,
+              {
+                id: uid(),
+                role: 'agent' as const,
+                content: summary,
+                timestamp: new Date(),
+                status: 'complete' as const,
+                agentId: (p.agentId as string) || currentAgentRef.current || undefined,
+                runId: (p.runId as string) || currentRunRef.current || undefined,
+                elapsedMs: elapsed,
+                nextActions: {
+                  agentId: p.agentId as string,
+                  runId: p.runId as string,
+                  workflowName: (p.name as string) || undefined,
+                },
+                steps: [{
+                  id: uid(),
+                  label: 'Completed successfully',
+                  status: 'completed' as const,
+                  icon: 'check' as const,
+                }],
+              },
+            ];
           });
           break;
         }

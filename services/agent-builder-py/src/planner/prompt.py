@@ -153,4 +153,9 @@ Call submit_plan EXACTLY ONCE with:
   - action: The action name from the catalog
 
 IMPORTANT: Steps are descriptive previews for the user, NOT rigid execution instructions.
-The executor agent will determine the actual execution flow dynamically at runtime."""
+The executor agent will determine the actual execution flow dynamically at runtime.
+
+### Final Summary Step
+ALWAYS include a final step at the end of the plan to summarize the outcome.
+This step should use connector: "built-in" and action: "finish".
+Example: {{"description": "Summarize the results and provide a formatted report", "connector": "built-in", "action": "finish"}}"""

@@ -26,18 +26,59 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-/** Render text with basic **bold** markdown support */
-function RichText({ text, className }: { text: string; className?: string }) {
+/** Render inline bold markdown */
+function InlineBold({ text }: { text: string }) {
   const parts = text.split(/(\*\*.*?\*\*)/g);
   return (
-    <span className={className}>
+    <>
       {parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**')) {
           return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
         }
         return <span key={i}>{part}</span>;
       })}
-    </span>
+    </>
+  );
+}
+
+/** Render text with **bold** and bullet point markdown support */
+function RichText({ text, className }: { text: string; className?: string }) {
+  const lines = text.split('\n');
+  const hasBullets = lines.some((l) => /^\s*[-•*]\s/.test(l));
+
+  if (!hasBullets) {
+    return (
+      <span className={className}>
+        <InlineBold text={text} />
+      </span>
+    );
+  }
+
+  // Group lines into paragraphs and bullet lists
+  const elements: { type: 'text' | 'bullet'; content: string }[] = [];
+  for (const line of lines) {
+    const bulletMatch = line.match(/^\s*[-•*]\s+(.*)/);
+    if (bulletMatch) {
+      elements.push({ type: 'bullet', content: bulletMatch[1] });
+    } else if (line.trim()) {
+      elements.push({ type: 'text', content: line });
+    }
+  }
+
+  return (
+    <div className={className}>
+      {elements.map((el, i) => {
+        if (el.type === 'bullet') {
+          return (
+            <div key={i} className="flex gap-1.5 ml-1 mt-0.5">
+              <span className="text-surface-300 shrink-0">•</span>
+              <span><InlineBold text={el.content} /></span>
+            </div>
+          );
+        }
+        return <p key={i} className={i > 0 ? 'mt-1' : ''}><InlineBold text={el.content} /></p>;
+      })}
+    </div>
   );
 }
 

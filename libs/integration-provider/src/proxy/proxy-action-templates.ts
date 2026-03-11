@@ -442,6 +442,51 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
     },
   ],
 
+  // ==================== Facebook ====================
+  facebook: [
+    {
+      actionName: 'list_pages',
+      actionType: 'LIST',
+      displayName: 'List Pages',
+      description: 'List Facebook Pages the authenticated user manages, including page access tokens and tasks',
+      method: 'GET',
+      endpoint: '/me/accounts',
+      responseConfig: { rootPath: 'data' },
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+      outputSchema: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            access_token: { type: 'string', description: 'Page access token for making API calls on behalf of this page' },
+            category: { type: 'string', description: 'Primary category of the page' },
+            category_list: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                },
+              },
+              description: 'List of categories assigned to the page',
+            },
+            name: { type: 'string', description: 'Name of the Facebook Page' },
+            id: { type: 'string', description: 'Page ID' },
+            tasks: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Permissions/tasks the user has on this page (e.g., ADVERTISE, ANALYZE, CREATE_CONTENT, MESSAGING, MODERATE, MANAGE)',
+            },
+          },
+        },
+      },
+    },
+  ],
+
   // ==================== Google Calendar ====================
   'google-calendar': [
     {

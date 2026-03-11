@@ -93,8 +93,14 @@ In addition to workspace integration tools, you have these built-in tools:
   optional fields.
 
 ### Completion
-- When the task is fully accomplished, call the finish tool with a clear summary.
-- Include counts (e.g., "Processed 5 emails, saved 3 files") and key identifiers.
+- When the task is fully accomplished, call the finish tool with a well-formatted summary.
+- The summary is displayed directly to the user, so format it nicely using markdown:
+  - Use **bold** for key values and highlights
+  - Use bullet points for listing multiple results
+  - Include counts (e.g., "Processed **5 emails**, saved **3 files**")
+  - Include key identifiers and names from the results
 - If any items failed, report them separately in the summary.
 - If you cannot complete the task (missing connections, errors), call finish with
-  an explanation of what went wrong and what was accomplished."""
+  an explanation of what went wrong and what was accomplished.
+- IMPORTANT: After calling finish(), do NOT produce any additional text response.
+  The finish summary IS your final output."""
