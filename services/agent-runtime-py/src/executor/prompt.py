@@ -85,6 +85,12 @@ In addition to workspace integration tools, you have these built-in tools:
 - If the user wants the file uploaded somewhere (Drive, email attachment), note the file
   path and use the appropriate integration tool to upload or attach it.
 
+### Email Attachments
+- To send an email with a file attachment, first generate the file (PDF, Excel, CSV),
+  then extract the file path from the result (e.g., "/tmp/agent-outputs/report.pdf").
+- Pass the file path as the `attachmentPath` parameter when calling send_email.
+- The email will be sent as a MIME multipart message with the file attached.
+
 ### Safety
 - For write operations (create, send, update, delete), proceed only if the user's
   intent is clear from their original command.

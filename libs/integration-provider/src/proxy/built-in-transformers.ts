@@ -109,11 +109,71 @@ const gmailRfc2822Sender: ProxyActionConfig['bodyBuilder'] = (input) => {
   if (input.raw && !input.to) {
     return { raw: input.raw };
   }
-  // Build RFC 2822 message from simple params and base64url-encode it
+
   const to = String(input.to || '');
   const subject = String(input.subject || '(no subject)');
   const body = String(input.body || input.text || input.content || '');
   const cc = input.cc ? `Cc: ${input.cc}\r\n` : '';
+
+  // Check for file attachment (from generate_pdf, generate_excel, etc.)
+  const attachmentPath = input.attachmentPath || input.attachment || input.filePath;
+
+  if (attachmentPath) {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = String(attachmentPath);
+
+    if (fs.existsSync(filePath)) {
+      const fileName = path.basename(filePath);
+      const fileContent = fs.readFileSync(filePath);
+      const fileBase64 = fileContent.toString('base64');
+
+      const ext = path.extname(fileName).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.csv': 'text/csv',
+        '.txt': 'text/plain',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+      };
+      const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+      const boundary = `boundary_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const parts = [
+        `To: ${to}`,
+        ...(input.cc ? [`Cc: ${input.cc}`] : []),
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        '',
+        `--${boundary}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        '',
+        body,
+        '',
+        `--${boundary}`,
+        `Content-Type: ${mimeType}; name="${fileName}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${fileName}"`,
+        '',
+        fileBase64,
+        '',
+        `--${boundary}--`,
+      ];
+
+      const raw = Buffer.from(parts.join('\r\n'))
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      return { raw };
+    }
+  }
+
+  // Plain text email (no attachment)
   const message = `To: ${to}\r\n${cc}Subject: ${subject}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
   const raw = Buffer.from(message)
     .toString('base64')

@@ -283,7 +283,7 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       actionName: 'send_email',
       actionType: 'SEND',
       displayName: 'Send Email',
-      description: 'Send an email via Gmail. Accepts to, subject, and body — automatically builds the email.',
+      description: 'Send an email via Gmail with optional file attachment. Pass attachmentPath from generate_pdf/generate_excel/generate_csv to attach a file.',
       method: 'POST',
       endpoint: '/gmail/v1/users/me/messages/send',
       transformerName: 'gmail_rfc2822_sender',
@@ -295,6 +295,7 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
           subject: { type: 'string', description: 'Email subject line' },
           body: { type: 'string', description: 'Plain text email body content' },
           cc: { type: 'string', description: 'CC recipient email address (optional)' },
+          attachmentPath: { type: 'string', description: 'File path to attach (from generate_pdf, generate_excel, or generate_csv result)' },
         },
       },
       outputSchema: {

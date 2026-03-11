@@ -10,8 +10,10 @@ Ports:
 import base64
 import json
 import logging
+import os
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
 from urllib.parse import urlencode, quote
@@ -163,10 +165,55 @@ def _gmail_rfc2822_sender(inp: dict) -> dict[str, Any]:
     to = str(inp.get("to", ""))
     subject = str(inp.get("subject", "(no subject)"))
     body = str(inp.get("body") or inp.get("text") or inp.get("content") or "")
-    cc = f"Cc: {inp['cc']}\r\n" if inp.get("cc") else ""
-    message = f"To: {to}\r\n{cc}Subject: {subject}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{body}"
-    raw = base64.urlsafe_b64encode(message.encode()).decode().rstrip("=")
-    return {"raw": raw}
+
+    # Check for file attachment
+    attachment_path = inp.get("attachmentPath") or inp.get("attachment") or inp.get("filePath")
+    logger.info(f"gmail_rfc2822_sender: to={to}, subject={subject}, attachmentPath={attachment_path}")
+
+    if attachment_path:
+        attachment_path = str(attachment_path).strip()
+        file_exists = os.path.isfile(attachment_path)
+        logger.info(f"gmail_rfc2822_sender: file_exists={file_exists}, path='{attachment_path}'")
+
+    if attachment_path and os.path.isfile(str(attachment_path).strip()):
+        # Build MIME multipart message with attachment using Python email library
+        from email.mime.base import MIMEBase
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email import encoders
+        import mimetypes
+
+        attachment_path = str(attachment_path).strip()
+        msg = MIMEMultipart()
+        msg["To"] = to
+        if inp.get("cc"):
+            msg["Cc"] = str(inp["cc"])
+        msg["Subject"] = subject
+
+        # Text body
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        # File attachment
+        filename = os.path.basename(attachment_path)
+        mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        maintype, subtype = mime_type.split("/", 1)
+
+        with open(attachment_path, "rb") as f:
+            attachment = MIMEBase(maintype, subtype)
+            attachment.set_payload(f.read())
+        encoders.encode_base64(attachment)
+        attachment.add_header("Content-Disposition", "attachment", filename=filename)
+        msg.attach(attachment)
+
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode().rstrip("=")
+        logger.info(f"gmail_rfc2822_sender: built MIME multipart with attachment '{filename}' ({len(raw)} chars)")
+        return {"raw": raw}
+    else:
+        cc = f"Cc: {inp['cc']}\r\n" if inp.get("cc") else ""
+        message = f"To: {to}\r\n{cc}Subject: {subject}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{body}"
+        raw = base64.urlsafe_b64encode(message.encode()).decode().rstrip("=")
+        logger.info(f"gmail_rfc2822_sender: built plain text message ({len(raw)} chars)")
+        return {"raw": raw}
 
 
 # Google Drive

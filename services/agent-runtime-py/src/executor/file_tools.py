@@ -73,16 +73,26 @@ async def generate_pdf(
 
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
+
+        # Register DejaVu Sans for full Unicode support (Sinhala, CJK, etc.)
+        font_dir = "/usr/share/fonts/truetype/dejavu"
+        if os.path.isdir(font_dir):
+            pdf.add_font("DejaVu", "", os.path.join(font_dir, "DejaVuSans.ttf"), uni=True)
+            pdf.add_font("DejaVu", "B", os.path.join(font_dir, "DejaVuSans-Bold.ttf"), uni=True)
+            font_family = "DejaVu"
+        else:
+            font_family = "Helvetica"
+
         pdf.add_page()
 
         # Title
-        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_font(font_family, "B", 16)
         pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT", align="C")
         pdf.ln(5)
 
         # Body text
         if content:
-            pdf.set_font("Helvetica", "", 11)
+            pdf.set_font(font_family, "", 11)
             pdf.multi_cell(0, 6, content)
             pdf.ln(5)
 
@@ -90,7 +100,7 @@ async def generate_pdf(
         table_headers = _coerce_list(table_headers)
         table_rows = _coerce_list(table_rows)
         if table_headers and table_rows:
-            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_font(font_family, "B", 10)
             col_count = len(table_headers)
             page_width = pdf.w - pdf.l_margin - pdf.r_margin
             col_width = page_width / col_count
@@ -101,7 +111,7 @@ async def generate_pdf(
             pdf.ln()
 
             # Data rows
-            pdf.set_font("Helvetica", "", 9)
+            pdf.set_font(font_family, "", 9)
             for row in table_rows:
                 for i, cell in enumerate(row):
                     text = str(cell) if cell is not None else ""

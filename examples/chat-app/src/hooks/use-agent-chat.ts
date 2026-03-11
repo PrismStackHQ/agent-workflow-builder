@@ -191,20 +191,45 @@ export function useAgentChat() {
               logoUrl,
             });
           } else if (stepType === 'tool_end') {
-            // Complete the last running step
+            // Complete the matching running step — match by displayName/logoUrl to handle
+            // parallel tool calls (e.g. two check_connection calls interleaving)
+            const displayName = p.displayName as string | undefined;
             updateLastAgentMessage((m) => {
               const steps = [...(m.steps || [])];
-              let lastRunningIdx = -1;
-              for (let i = steps.length - 1; i >= 0; i--) {
-                if (steps[i].status === 'running') { lastRunningIdx = i; break; }
+              let matchIdx = -1;
+
+              // First try to match by displayName in the label (handles parallel tool calls)
+              if (displayName) {
+                for (let i = steps.length - 1; i >= 0; i--) {
+                  if (steps[i].status === 'running' && steps[i].label?.includes(displayName)) {
+                    matchIdx = i;
+                    break;
+                  }
+                }
               }
-              if (lastRunningIdx >= 0) {
-                steps[lastRunningIdx] = {
-                  ...steps[lastRunningIdx],
+              // Fallback: match by logoUrl
+              if (matchIdx === -1 && logoUrl) {
+                for (let i = steps.length - 1; i >= 0; i--) {
+                  if (steps[i].status === 'running' && steps[i].logoUrl === logoUrl) {
+                    matchIdx = i;
+                    break;
+                  }
+                }
+              }
+              // Fallback: last running step
+              if (matchIdx === -1) {
+                for (let i = steps.length - 1; i >= 0; i--) {
+                  if (steps[i].status === 'running') { matchIdx = i; break; }
+                }
+              }
+
+              if (matchIdx >= 0) {
+                steps[matchIdx] = {
+                  ...steps[matchIdx],
                   status: 'completed' as const,
                   icon: iconCast,
                   outputSummary,
-                  logoUrl: logoUrl || steps[lastRunningIdx].logoUrl,
+                  logoUrl: logoUrl || steps[matchIdx].logoUrl,
                 };
               } else {
                 steps.push({
@@ -433,16 +458,29 @@ export function useAgentChat() {
             break;
           }
 
-          // For "completed"/"failed", update the last running step with result data
+          // For "completed"/"failed", update the matching running step with result data
           updateLastAgentMessage((m) => {
             const steps = [...(m.steps || [])];
-            let lastRunningIdx = -1;
+            let matchIdx = -1;
+
+            // Match by stepName/description to handle parallel tool calls correctly
+            const matchLabel = stepDescription || stepName;
             for (let i = steps.length - 1; i >= 0; i--) {
-              if (steps[i].status === 'running') { lastRunningIdx = i; break; }
+              if (steps[i].status === 'running' && steps[i].label === matchLabel) {
+                matchIdx = i;
+                break;
+              }
             }
+            // Fallback: last running step
+            if (matchIdx === -1) {
+              for (let i = steps.length - 1; i >= 0; i--) {
+                if (steps[i].status === 'running') { matchIdx = i; break; }
+              }
+            }
+
             const stepData = {
               id: uid(),
-              label: stepDescription || stepName,
+              label: matchLabel,
               status: (stepStatus === 'failed' ? 'failed' : 'completed') as 'completed' | 'failed',
               icon: (stepStatus === 'failed' ? 'zap' : iconCast || 'check') as 'check' | 'search' | 'link' | 'cog' | 'play' | 'pause' | 'zap',
               inputSummary,
@@ -450,8 +488,8 @@ export function useAgentChat() {
               arguments: stepArguments,
               result: stepResult,
             };
-            if (lastRunningIdx >= 0) {
-              steps[lastRunningIdx] = { ...steps[lastRunningIdx], ...stepData };
+            if (matchIdx >= 0) {
+              steps[matchIdx] = { ...steps[matchIdx], ...stepData };
             } else {
               steps.push(stepData);
             }
