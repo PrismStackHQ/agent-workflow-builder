@@ -104,11 +104,15 @@ class NatsService:
             async for msg in sub.messages:
                 try:
                     data = json.loads(msg.data.decode())
-                    await handler(data)
+                    # Ack immediately before processing. Handlers can run for
+                    # minutes (agent execution) which exceeds NATS ack_wait
+                    # (default 30s), causing JetStream to redeliver and restart
+                    # the entire workflow. Handlers have their own error handling
+                    # and publish failure events, so redelivery is not needed.
                     await msg.ack()
+                    await handler(data)
                 except Exception as e:
                     logger.error(f"Error handling {subject}: {e}", exc_info=True)
-                    await msg.nak()
 
         task = asyncio.create_task(_consume())
         self._tasks.append(task)

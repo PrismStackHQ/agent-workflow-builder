@@ -336,66 +336,118 @@ export function useAgentChat() {
           }));
           break;
 
+        case 'agent_run_thinking': {
+          const thinkingText = (p.text as string) || '';
+          if (thinkingText) {
+            // Add a new agent message with the reasoning text
+            addMessage({
+              id: uid(),
+              role: 'agent',
+              content: thinkingText,
+              timestamp: new Date(),
+              status: 'processing',
+              agentId: (p.agentId as string) || currentAgentRef.current || undefined,
+              runId: (p.runId as string) || currentRunRef.current || undefined,
+            });
+          }
+          break;
+        }
+
         case 'agent_run_step_completed': {
           const stepResult = p.result;
           const stepIndex = p.stepIndex as number;
           const stepName = (p.stepName as string) || `Step ${stepIndex}`;
           const stepDescription = p.stepDescription as string | undefined;
+          const stepStatus = (p.status as string) || 'completed';
+          const stepIcon = (p.icon as string) || 'check';
+          const inputSummary = p.inputSummary as string | undefined;
+          const outputSummary = p.outputSummary as string | undefined;
+          const stepArguments = p.arguments as Record<string, unknown> | undefined;
+          const iconCast = stepIcon as 'check' | 'search' | 'link' | 'cog' | 'play' | 'pause' | 'zap';
 
-          // Accumulate step results for the final results card
-          if (stepResult !== undefined && stepResult !== null) {
-            runResultsRef.current.push({
-              stepIndex,
-              stepName,
-              description: stepDescription,
-              data: stepResult,
+          // For "running" status, add a spinner step with arguments inline
+          if (stepStatus === 'running') {
+            addStepToLastAgent({
+              id: uid(),
+              label: stepDescription || stepName,
+              status: 'running',
+              icon: iconCast || 'cog',
+              inputSummary,
+              arguments: stepArguments,
             });
+            break;
           }
 
-          addStepToLastAgent({
-            id: uid(),
-            label: stepDescription || stepName,
-            status: 'completed',
-            icon: 'check',
+          // For "completed"/"failed", update the last running step with result data
+          updateLastAgentMessage((m) => {
+            const steps = [...(m.steps || [])];
+            let lastRunningIdx = -1;
+            for (let i = steps.length - 1; i >= 0; i--) {
+              if (steps[i].status === 'running') { lastRunningIdx = i; break; }
+            }
+            const stepData = {
+              id: uid(),
+              label: stepDescription || stepName,
+              status: (stepStatus === 'failed' ? 'failed' : 'completed') as 'completed' | 'failed',
+              icon: (stepStatus === 'failed' ? 'zap' : iconCast || 'check') as 'check' | 'search' | 'link' | 'cog' | 'play' | 'pause' | 'zap',
+              inputSummary,
+              outputSummary,
+              arguments: stepArguments,
+              result: stepResult,
+            };
+            if (lastRunningIdx >= 0) {
+              steps[lastRunningIdx] = { ...steps[lastRunningIdx], ...stepData };
+            } else {
+              steps.push(stepData);
+            }
+            return { ...m, steps };
           });
           break;
         }
 
         case 'agent_run_succeeded': {
           const elapsed = Date.now() - startTimeRef.current;
-          const collectedResults = [...runResultsRef.current];
           setProcessing(false);
           pendingPlanRef.current = null;
           runResultsRef.current = [];
 
-          // Update the existing workflow message with final results
-          updateLastAgentMessage((m) => ({
-            ...m,
+          // Mark all processing agent messages as complete
+          setMessages((prev) => prev.map((m) =>
+            m.role === 'agent' && m.status === 'processing'
+              ? {
+                  ...m,
+                  status: 'complete' as const,
+                  steps: (m.steps || []).map((s) =>
+                    s.status === 'running'
+                      ? { ...s, status: 'completed' as const, icon: 'check' as const }
+                      : s,
+                  ),
+                }
+              : m,
+          ));
+
+          // Add a final completion message with summary
+          addMessage({
+            id: uid(),
+            role: 'agent',
             content: (p.summary as string) || 'Workflow completed successfully!',
-            status: 'complete' as const,
-            agentId: (p.agentId as string) || m.agentId,
-            runId: (p.runId as string) || m.runId,
+            timestamp: new Date(),
+            status: 'complete',
+            agentId: (p.agentId as string) || currentAgentRef.current || undefined,
+            runId: (p.runId as string) || currentRunRef.current || undefined,
             elapsedMs: elapsed,
-            workflowResults: collectedResults.length > 0 ? collectedResults : undefined,
             nextActions: {
               agentId: p.agentId as string,
               runId: p.runId as string,
               workflowName: (p.name as string) || undefined,
             },
-            steps: [
-              ...(m.steps || []).map((s) =>
-                s.status === 'running'
-                  ? { ...s, status: 'completed' as const, icon: 'check' as const }
-                  : s,
-              ),
-              {
-                id: uid(),
-                label: 'Completed successfully',
-                status: 'completed' as const,
-                icon: 'check' as const,
-              },
-            ],
-          }));
+            steps: [{
+              id: uid(),
+              label: 'Completed successfully',
+              status: 'completed' as const,
+              icon: 'check' as const,
+            }],
+          });
           break;
         }
 
@@ -405,27 +457,36 @@ export function useAgentChat() {
           runResultsRef.current = [];
           const errorMsg = (p.error as string) || 'Unknown error';
 
-          // Update the existing workflow message instead of adding a new one
-          updateLastAgentMessage((m) => ({
-            ...m,
+          // Mark all processing agent messages as failed
+          setMessages((prev) => prev.map((m) =>
+            m.role === 'agent' && m.status === 'processing'
+              ? {
+                  ...m,
+                  status: 'complete' as const,
+                  steps: (m.steps || []).map((s) =>
+                    s.status === 'running'
+                      ? { ...s, status: 'failed' as const, icon: 'zap' as const }
+                      : s,
+                  ),
+                }
+              : m,
+          ));
+
+          addMessage({
+            id: uid(),
+            role: 'agent',
             content: `Something went wrong: ${errorMsg}`,
-            status: 'error' as const,
-            agentId: (p.agentId as string) || m.agentId,
-            runId: (p.runId as string) || m.runId,
-            steps: [
-              ...(m.steps || []).map((s) =>
-                s.status === 'running'
-                  ? { ...s, status: 'failed' as const, icon: 'zap' as const }
-                  : s,
-              ),
-              {
-                id: uid(),
-                label: errorMsg.length > 80 ? errorMsg.substring(0, 77) + '...' : errorMsg,
-                status: 'failed' as const,
-                icon: 'zap' as const,
-              },
-            ],
-          }));
+            timestamp: new Date(),
+            status: 'error',
+            agentId: (p.agentId as string) || currentAgentRef.current || undefined,
+            runId: (p.runId as string) || currentRunRef.current || undefined,
+            steps: [{
+              id: uid(),
+              label: errorMsg.length > 80 ? errorMsg.substring(0, 77) + '...' : errorMsg,
+              status: 'failed' as const,
+              icon: 'zap' as const,
+            }],
+          });
           break;
         }
 

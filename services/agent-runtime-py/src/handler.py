@@ -53,19 +53,27 @@ async def register_handlers(
                 ws_id = workspace_id or agent.workspaceId
                 conn_id = end_user_id or ""
 
-                # Create run record
+                # Create or update run record
                 run_id = data.get("runId") or str(uuid.uuid4())
                 now = datetime.utcnow()
 
-                run = AgentRun(
-                    id=run_id,
-                    agentId=agent_id,
-                    status=RunStatus.RUNNING,
-                    startedAt=now,
-                    endUserConnectionId=conn_id or None,
-                    createdAt=now,
-                )
-                db.add(run)
+                run = await db.get(AgentRun, run_id)
+                if run:
+                    # Run already created by scheduler/builder — update it
+                    run.status = RunStatus.RUNNING
+                    run.startedAt = now
+                    if conn_id:
+                        run.endUserConnectionId = conn_id
+                else:
+                    run = AgentRun(
+                        id=run_id,
+                        agentId=agent_id,
+                        status=RunStatus.RUNNING,
+                        startedAt=now,
+                        endUserConnectionId=conn_id or None,
+                        createdAt=now,
+                    )
+                    db.add(run)
                 await db.commit()
 
                 # Publish run started
@@ -127,6 +135,19 @@ async def register_handlers(
 
         except Exception as e:
             logger.error(f"Run execution failed: {e}", exc_info=True)
+            # Publish failure event so the frontend knows the run crashed
+            try:
+                ended_at = datetime.utcnow()
+                await nats.publish(SUBJECTS.RUNTIME_RUN_FAILED, {
+                    "orgId": org_id,
+                    "workspaceId": workspace_id,
+                    "agentId": agent_id,
+                    "runId": data.get("runId", "unknown"),
+                    "endedAt": ended_at.isoformat(),
+                    "error": f"Runtime error: {str(e)[:500]}",
+                })
+            except Exception as pub_err:
+                logger.error(f"Failed to publish failure event: {pub_err}")
 
     # ── Handle resume request ──────────────────────────────────────────────
 
@@ -153,7 +174,7 @@ async def register_handlers(
 
                 # Update run status
                 now = datetime.utcnow()
-                run.status = "RUNNING"
+                run.status = RunStatus.RUNNING
                 run.resumedAt = now
                 run.pausedAt = None
                 run.pausedAtStepIndex = None

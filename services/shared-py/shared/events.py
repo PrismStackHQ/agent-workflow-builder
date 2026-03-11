@@ -46,6 +46,7 @@ class SUBJECTS:
     RUNTIME_RUN_RESUMED = "runtime.run.resumed"
     RUNTIME_RUN_SUB_AGENT_STARTED = "runtime.run.sub_agent.started"
     RUNTIME_RUN_ITERATION_PROGRESS = "runtime.run.iteration.progress"
+    RUNTIME_RUN_THINKING = "runtime.run.thinking"
 
     # Tools
     TOOL_REGISTRY_SYNCED = "tools.registry.synced"

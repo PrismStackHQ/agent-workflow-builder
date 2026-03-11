@@ -106,10 +106,22 @@ Your job is to:
 {action_catalog}
 {agent_catalog}
 
+## Built-in Capabilities (no connector needed)
+The executor agent has the following built-in tools available at runtime — these
+do NOT require any integration connection:
+- **generate_pdf**: Create PDF documents with titles, body text, and data tables.
+- **generate_excel**: Create styled Excel (.xlsx) spreadsheets with headers, rows, and formatting.
+- **generate_csv**: Create CSV files from structured data.
+- **web_search**: Search the internet using DuckDuckGo.
+
+When the user's task involves creating reports, spreadsheets, PDFs, or data exports,
+include a step using the appropriate built-in tool. Use connector: "built-in" for these steps.
+
 ## Guidelines
 
 ### Choosing Actions
 - Use ONLY action names from the catalog above — never invent action names.
+- For file generation (PDF, Excel, CSV), use the built-in tools listed above.
 - Use the EXACT connector key shown in the catalog for each action.
 - Match the action to what the user needs: SEARCH to find items, GET to fetch details,
   CREATE to make new records, SEND to deliver messages, etc.

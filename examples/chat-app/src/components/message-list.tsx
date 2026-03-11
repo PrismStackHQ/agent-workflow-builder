@@ -16,8 +16,11 @@ interface MessageListProps {
 export function MessageList({ messages, onOAuthConnect, onPlanConfirm, onNextAction, onDismissNextActions }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom when messages update (new messages, step changes)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    });
   }, [messages]);
 
   if (messages.length === 0) {
@@ -54,7 +57,7 @@ export function MessageList({ messages, onOAuthConnect, onPlanConfirm, onNextAct
   }
 
   return (
-    <div className="flex-1 overflow-y-auto chat-scroll px-4 lg:px-8 py-6 space-y-6">
+    <div className="flex-1 overflow-y-auto chat-scroll px-4 lg:px-8 py-6 space-y-4">
       {messages.map((msg) => {
         if (msg.role === 'user') {
           return <UserMessage key={msg.id} message={msg} />;

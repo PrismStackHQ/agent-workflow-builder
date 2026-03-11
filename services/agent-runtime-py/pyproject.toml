@@ -10,6 +10,8 @@ dependencies = [
     "langchain-community>=0.3",
     "duckduckgo-search>=7.0",
     "langgraph-checkpoint-postgres>=2.0",
+    "fpdf2>=2.8",
+    "openpyxl>=3.1",
 ]
 
 [build-system]

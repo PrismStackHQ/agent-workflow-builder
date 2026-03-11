@@ -14,6 +14,7 @@ import type {
   AgentRunResumedEvent,
   AgentRunSubAgentStartedEvent,
   AgentRunIterationProgressEvent,
+  AgentRunThinkingEvent,
   OrgCreatedEvent,
   ConnectionEndpointConfiguredEvent,
   RagConfiguredEvent,
@@ -123,6 +124,11 @@ export class WsHandler implements OnModuleInit {
             stepIndex: data.stepIndex,
             stepName: data.stepName,
             stepDescription: data.stepDescription,
+            status: data.status,
+            icon: data.icon,
+            inputSummary: data.inputSummary,
+            outputSummary: data.outputSummary,
+            arguments: data.arguments,
             result: data.result,
           },
         });
@@ -217,6 +223,21 @@ export class WsHandler implements OnModuleInit {
             totalItems: data.totalItems,
             status: data.status,
             itemLabel: data.itemLabel,
+          },
+        });
+      },
+    );
+
+    await this.nats.subscribe<AgentRunThinkingEvent>(
+      SUBJECTS.RUNTIME_RUN_THINKING,
+      'ws-run-thinking',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_run_thinking',
+          payload: {
+            agentId: data.agentId,
+            runId: data.runId,
+            text: data.text,
           },
         });
       },

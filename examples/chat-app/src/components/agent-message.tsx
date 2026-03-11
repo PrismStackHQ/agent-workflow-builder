@@ -26,79 +26,88 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
+/** Render text with basic **bold** markdown support */
+function RichText({ text, className }: { text: string; className?: string }) {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return (
+    <span className={className}>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
 export function AgentMessage({ message, onOAuthConnect, onPlanConfirm, onNextAction, onDismissNextActions }: AgentMessageProps) {
   const isProcessing = message.status === 'processing';
   const isError = message.status === 'error';
+  const hasSteps = message.steps && message.steps.length > 0;
+  const hasCards = message.connectionCard || message.planPreview || message.toolResult || message.nextActions;
 
   return (
-    <div className="flex gap-3 animate-slide-up">
-      {/* Agent avatar */}
-      <div className="shrink-0 mt-0.5">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-sm">
-          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-          </svg>
-        </div>
-      </div>
-
-      {/* Message content */}
-      <div className="flex-1 min-w-0">
-        {/* Elapsed time */}
-        {message.elapsedMs !== undefined && (
-          <p className="text-xs text-surface-400 mb-1">
-            Worked for {formatElapsed(message.elapsedMs)}
-          </p>
-        )}
-
-        {/* Main text */}
-        <p className={`text-sm leading-relaxed ${isError ? 'text-red-600' : 'text-surface-800'}`}>
-          {message.content}
+    <div className="animate-slide-up">
+      {/* Elapsed time badge */}
+      {message.elapsedMs !== undefined && (
+        <p className="text-xs text-surface-300 mb-1.5">
+          Worked for {formatElapsed(message.elapsedMs)}
         </p>
+      )}
 
-        {/* Steps */}
-        {message.steps && message.steps.length > 0 && (
-          <div className="mt-2 space-y-0.5">
-            {message.steps.map((step) => (
-              <StepIndicator key={step.id} step={step} />
-            ))}
-          </div>
-        )}
+      {/* Main text content */}
+      {message.content && (
+        <p className={`text-[15px] leading-relaxed mb-1 ${
+          isError ? 'text-red-600' : 'text-surface-700'
+        }`}>
+          <RichText text={message.content} />
+        </p>
+      )}
 
-        {/* Plan preview card */}
-        {message.planPreview && onPlanConfirm && (
-          <PlanPreviewCard
-            plan={message.planPreview}
-            onConfirm={onPlanConfirm}
-          />
-        )}
+      {/* Steps — compact list */}
+      {hasSteps && (
+        <div className="mt-1.5 space-y-0">
+          {message.steps!.map((step) => (
+            <StepIndicator key={step.id} step={step} />
+          ))}
+        </div>
+      )}
 
-        {/* Connection card */}
-        {message.connectionCard && (
-          <ConnectionCard card={message.connectionCard} onConnect={onOAuthConnect} />
-        )}
+      {/* Plan preview card */}
+      {message.planPreview && onPlanConfirm && (
+        <PlanPreviewCard
+          plan={message.planPreview}
+          onConfirm={onPlanConfirm}
+        />
+      )}
 
-        {/* Tool result */}
-        {message.toolResult && <ToolResult data={message.toolResult} />}
+      {/* Connection card */}
+      {message.connectionCard && (
+        <ConnectionCard card={message.connectionCard} onConnect={onOAuthConnect} />
+      )}
 
-        {/* Workflow results card */}
-        {message.workflowResults && message.workflowResults.length > 0 && (
-          <WorkflowResultCard results={message.workflowResults} />
-        )}
+      {/* Tool result */}
+      {message.toolResult && <ToolResult data={message.toolResult} />}
 
-        {/* Next actions card */}
-        {message.nextActions && !message.nextActions.dismissed && onNextAction && onDismissNextActions && (
-          <NextActionsCard
-            data={message.nextActions}
-            onAction={onNextAction}
-            onDismiss={onDismissNextActions}
-          />
-        )}
+      {/* Workflow results card */}
+      {message.workflowResults && message.workflowResults.length > 0 && (
+        <WorkflowResultCard results={message.workflowResults} />
+      )}
 
-        {/* Thinking indicator — only show when processing with no visible activity */}
-        {isProcessing && (!message.steps || message.steps.length === 0) && !message.connectionCard && !message.planPreview && (
-          <ThinkingIndicator />
-        )}
-      </div>
+      {/* Next actions card */}
+      {message.nextActions && !message.nextActions.dismissed && onNextAction && onDismissNextActions && (
+        <NextActionsCard
+          data={message.nextActions}
+          onAction={onNextAction}
+          onDismiss={onDismissNextActions}
+        />
+      )}
+
+      {/* Thinking indicator — only when processing with no visible activity */}
+      {isProcessing && !hasSteps && !hasCards && !message.content && (
+        <ThinkingIndicator />
+      )}
     </div>
   );
 }

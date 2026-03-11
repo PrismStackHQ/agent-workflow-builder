@@ -10,6 +10,14 @@ export interface ChatStep {
   detail?: string;
   expandable?: boolean;
   expanded?: boolean;
+  /** Tool call arguments (for inline display) */
+  arguments?: Record<string, unknown>;
+  /** Tool call result data (for inline display) */
+  result?: unknown;
+  /** Human-readable input summary */
+  inputSummary?: string;
+  /** Human-readable output summary */
+  outputSummary?: string;
 }
 
 export interface ConnectionCardData {
@@ -67,6 +75,11 @@ export interface WorkflowResultItem {
   stepIndex: number;
   stepName: string;
   description?: string;
+  status?: 'running' | 'completed' | 'failed';
+  icon?: string;
+  inputSummary?: string;
+  outputSummary?: string;
+  arguments?: Record<string, unknown>;
   data: unknown;
 }
 

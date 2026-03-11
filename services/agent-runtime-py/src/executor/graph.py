@@ -18,6 +18,7 @@ from shared.nango_client import NangoClient
 from shared.nats_client import NatsService
 from .callbacks import NatsProgressCallback
 from .ddg_search import web_search
+from .file_tools import FILE_TOOLS
 from .prompt import build_executor_prompt
 from .tool_factory import build_workspace_tools
 
@@ -55,8 +56,8 @@ async def run_executor(
     # Build workspace tools from proxy actions (filtered to plan's connectors)
     workspace_tools = await build_workspace_tools(db, workspace_id, end_user_id, nango, connectors=connectors)
 
-    # Combine all tools
-    all_tools = workspace_tools + [web_search, finish]
+    # Combine all tools: workspace + file generation + web search + finish
+    all_tools = workspace_tools + FILE_TOOLS + [web_search, finish]
 
     # Build system prompt
     system_prompt = build_executor_prompt(user_command, plan_description)
@@ -78,7 +79,10 @@ async def run_executor(
         callbacks=[callback],
     )
 
-    # Create ReAct agent
+    # Create ReAct agent.
+    # handle_tool_error=True feeds tool exceptions back to the LLM as error
+    # messages instead of crashing the agent, so it can decide to try a
+    # different approach or call finish() with an error summary.
     agent = create_react_agent(
         model=model,
         tools=all_tools,
@@ -87,14 +91,18 @@ async def run_executor(
 
     logger.info(
         f"Running executor agent for run {run_id} "
-        f"({len(workspace_tools)} workspace tools + {2} built-in tools)"
+        f"({len(workspace_tools)} workspace tools + {len(FILE_TOOLS) + 2} built-in tools)"
     )
 
     try:
-        # Run the ReAct loop
+        # Run the ReAct loop with a recursion limit to prevent infinite retries.
+        # Each LLM call + tool call counts as ~2 steps, so 40 allows ~20 tool calls.
         result = await agent.ainvoke(
             {"messages": [("human", user_command)]},
-            config={"callbacks": [callback]},
+            config={
+                "callbacks": [callback],
+                "recursion_limit": 40,
+            },
         )
 
         # Check if finish was called
@@ -112,5 +120,13 @@ async def run_executor(
         return {"status": "succeeded", "summary": summary}
 
     except Exception as e:
+        error_msg = str(e)
+        # Provide a clearer message for recursion limit hits
+        if "recursion" in error_msg.lower() or "GraphRecursionError" in type(e).__name__:
+            error_msg = (
+                "The agent exceeded the maximum number of steps (20 tool calls). "
+                "This usually means a tool kept failing and the agent retried too many times. "
+                "Please check tool configurations and try again."
+            )
         logger.error(f"Executor failed for run {run_id}: {e}", exc_info=True)
-        return {"status": "failed", "summary": str(e)}
+        return {"status": "failed", "summary": error_msg}

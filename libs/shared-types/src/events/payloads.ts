@@ -176,6 +176,11 @@ export interface AgentRunStepCompletedEvent {
   stepIndex: number;
   stepName: string;
   stepDescription?: string;
+  status?: 'running' | 'completed' | 'failed';
+  icon?: string;
+  inputSummary?: string;
+  outputSummary?: string;
+  arguments?: Record<string, unknown>;
   result?: unknown;
 }
 
@@ -223,6 +228,15 @@ export interface AgentRunResumedEvent {
   agentId: string;
   runId: string;
   resumedAt: string;
+}
+
+// Agent thinking/reasoning events
+export interface AgentRunThinkingEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  text: string;
 }
 
 // Sub-agent events
