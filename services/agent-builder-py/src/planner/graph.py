@@ -9,9 +9,13 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import OPENAI_API_KEY, PLANNER_LLM_MODEL
+from shared.models import AvailableIntegration
+from shared.nats_client import NatsService
+from .callbacks import PlannerProgressCallback
 from .prompt import build_action_catalog, build_agent_catalog, build_planner_prompt
 from .tools import create_planner_tools
 
@@ -23,6 +27,9 @@ async def run_planner(
     workspace_id: str,
     command: str,
     end_user_id: str | None = None,
+    nats: NatsService | None = None,
+    org_id: str = "",
+    command_id: str = "",
 ) -> dict[str, Any]:
     """Run the planner agent to produce a workflow plan from a natural language command.
 
@@ -38,11 +45,37 @@ async def run_planner(
     # Create tools
     tools, state = create_planner_tools(db, workspace_id, end_user_id)
 
+    # Build integration lookup for display names/logos
+    integration_lookup: dict[str, dict] = {}
+    ai_result = await db.execute(
+        select(AvailableIntegration).where(
+            AvailableIntegration.workspaceId == workspace_id
+        )
+    )
+    for ai in ai_result.scalars().all():
+        integration_lookup[ai.providerKey] = {
+            "displayName": ai.displayName,
+            "logoUrl": ai.logoUrl,
+        }
+
+    # Create progress callback if NATS is available
+    callbacks = []
+    if nats and command_id:
+        callback = PlannerProgressCallback(
+            nats=nats,
+            org_id=org_id,
+            workspace_id=workspace_id,
+            command_id=command_id,
+            integration_lookup=integration_lookup,
+        )
+        callbacks.append(callback)
+
     # Create model
     model = ChatOpenAI(
         model=PLANNER_LLM_MODEL,
         api_key=OPENAI_API_KEY,
         temperature=0,
+        callbacks=callbacks or None,
     )
 
     # Create and run the ReAct agent
@@ -56,6 +89,7 @@ async def run_planner(
 
     result = await agent.ainvoke(
         {"messages": [("human", command)]},
+        config={"callbacks": callbacks} if callbacks else None,
     )
 
     # Extract the plan from state (set by submit_plan tool)

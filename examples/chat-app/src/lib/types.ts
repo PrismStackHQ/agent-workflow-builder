@@ -18,6 +18,8 @@ export interface ChatStep {
   inputSummary?: string;
   /** Human-readable output summary */
   outputSummary?: string;
+  /** Integration logo URL (for connection check steps) */
+  logoUrl?: string;
 }
 
 export interface ConnectionCardData {

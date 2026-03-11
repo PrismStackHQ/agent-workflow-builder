@@ -243,6 +243,35 @@ export class WsHandler implements OnModuleInit {
       },
     );
 
+    await this.nats.subscribe<{
+      orgId: string;
+      workspaceId: string;
+      commandId: string;
+      stepType: string;
+      label: string;
+      icon?: string;
+      outputSummary?: string;
+      displayName?: string;
+      logoUrl?: string;
+    }>(
+      SUBJECTS.AGENT_PLANNER_PROGRESS,
+      'ws-planner-progress',
+      async (data) => {
+        this.wsService.sendToWorkspace(data.workspaceId, {
+          type: 'agent_planner_progress',
+          payload: {
+            commandId: data.commandId,
+            stepType: data.stepType,
+            label: data.label,
+            icon: data.icon,
+            outputSummary: data.outputSummary,
+            displayName: data.displayName,
+            logoUrl: data.logoUrl,
+          },
+        });
+      },
+    );
+
     this.logger.log('WebSocket NATS event handlers initialized');
   }
 }

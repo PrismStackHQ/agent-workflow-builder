@@ -189,7 +189,11 @@ export function StepIndicator({ step }: { step: ChatStep }) {
           canExpand ? 'cursor-pointer hover:bg-surface-50 -mx-1.5 px-1.5 rounded-md' : 'cursor-default'
         }`}
       >
-        <StepIcon icon={step.icon} isRunning={isRunning} isFailed={isFailed} />
+        {step.logoUrl ? (
+          <img src={step.logoUrl} alt="" className="w-4 h-4 rounded shrink-0 object-contain" />
+        ) : (
+          <StepIcon icon={step.icon} isRunning={isRunning} isFailed={isFailed} />
+        )}
 
         <span
           className={`text-[13px] leading-snug flex-1 min-w-0 ${

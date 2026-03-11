@@ -36,8 +36,11 @@ async def register_handlers(nats: NatsService, db_factory) -> None:
 
         try:
             async with db_factory() as db:
-                # Run planner agent
-                plan = await run_planner(db, workspace_id, command, end_user_id)
+                # Run planner agent (with NATS for real-time progress)
+                plan = await run_planner(
+                    db, workspace_id, command, end_user_id,
+                    nats=nats, org_id=org_id, command_id=command_id,
+                )
 
                 # Check missing connections
                 connection_where = [

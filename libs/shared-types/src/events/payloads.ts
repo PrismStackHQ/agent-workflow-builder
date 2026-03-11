@@ -230,6 +230,17 @@ export interface AgentRunResumedEvent {
   resumedAt: string;
 }
 
+// Planner progress events (builder analyzing phase)
+export interface AgentPlannerProgressEvent {
+  orgId: string;
+  workspaceId: string;
+  commandId: string;
+  stepType: 'thinking' | 'tool_start' | 'tool_end';
+  label: string;
+  icon?: string;
+  outputSummary?: string;
+}
+
 // Agent thinking/reasoning events
 export interface AgentRunThinkingEvent {
   orgId: string;

@@ -77,10 +77,14 @@ export class ProxyActionsService {
     }
     if (dto.transformerName !== undefined && dto.transformerName !== null) {
       const validNames = getTransformerNames();
-      if (!validNames.includes(dto.transformerName)) {
-        throw new BadRequestException(
-          `Unknown transformer: ${dto.transformerName}. Valid: ${validNames.join(', ')}`,
-        );
+      // Support chained transformers with "+" separator (e.g. "gmail_search_params+gmail_search_enricher")
+      const parts = dto.transformerName.split('+').map((n) => n.trim());
+      for (const part of parts) {
+        if (!validNames.includes(part)) {
+          throw new BadRequestException(
+            `Unknown transformer: ${part}. Valid: ${validNames.join(', ')}`,
+          );
+        }
       }
     }
 
@@ -159,10 +163,13 @@ export class ProxyActionsService {
     }
     if (dto.transformerName) {
       const validNames = getTransformerNames();
-      if (!validNames.includes(dto.transformerName)) {
-        throw new BadRequestException(
-          `Unknown transformer: ${dto.transformerName}. Valid: ${validNames.join(', ')}`,
-        );
+      const parts = dto.transformerName.split('+').map((n) => n.trim());
+      for (const part of parts) {
+        if (!validNames.includes(part)) {
+          throw new BadRequestException(
+            `Unknown transformer: ${part}. Valid: ${validNames.join(', ')}`,
+          );
+        }
       }
     }
   }

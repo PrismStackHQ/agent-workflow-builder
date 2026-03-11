@@ -276,6 +276,7 @@ export default function ProxyActionsPage() {
       {/* Editor slide-over */}
       {editingAction && (
         <ProxyActionEditor
+          key={editingAction.id + editingAction.updatedAt}
           action={editingAction}
           onSave={handleSave}
           onDelete={handleDelete}

@@ -48,6 +48,9 @@ class SUBJECTS:
     RUNTIME_RUN_ITERATION_PROGRESS = "runtime.run.iteration.progress"
     RUNTIME_RUN_THINKING = "runtime.run.thinking"
 
+    # Planner progress (builder analyzing phase)
+    AGENT_PLANNER_PROGRESS = "agent.planner.progress"
+
     # Tools
     TOOL_REGISTRY_SYNCED = "tools.registry.synced"
 

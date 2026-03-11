@@ -167,6 +167,61 @@ export function useAgentChat() {
           });
           break;
 
+        case 'agent_planner_progress': {
+          const stepType = p.stepType as string;
+          const label = p.label as string;
+          const icon = (p.icon as string) || 'cog';
+          const outputSummary = p.outputSummary as string | undefined;
+          const logoUrl = p.logoUrl as string | undefined;
+          const iconCast = icon as 'check' | 'search' | 'link' | 'cog' | 'play' | 'pause' | 'zap';
+
+          if (stepType === 'thinking') {
+            // Update the analyzing message content with LLM reasoning
+            updateLastAgentMessage((m) => ({
+              ...m,
+              content: label,
+            }));
+          } else if (stepType === 'tool_start') {
+            // Add a running step for the tool call
+            addStepToLastAgent({
+              id: uid(),
+              label,
+              status: 'running',
+              icon: iconCast,
+              logoUrl,
+            });
+          } else if (stepType === 'tool_end') {
+            // Complete the last running step
+            updateLastAgentMessage((m) => {
+              const steps = [...(m.steps || [])];
+              let lastRunningIdx = -1;
+              for (let i = steps.length - 1; i >= 0; i--) {
+                if (steps[i].status === 'running') { lastRunningIdx = i; break; }
+              }
+              if (lastRunningIdx >= 0) {
+                steps[lastRunningIdx] = {
+                  ...steps[lastRunningIdx],
+                  status: 'completed' as const,
+                  icon: iconCast,
+                  outputSummary,
+                  logoUrl: logoUrl || steps[lastRunningIdx].logoUrl,
+                };
+              } else {
+                steps.push({
+                  id: uid(),
+                  label,
+                  status: 'completed' as const,
+                  icon: iconCast,
+                  outputSummary,
+                  logoUrl,
+                });
+              }
+              return { ...m, steps };
+            });
+          }
+          break;
+        }
+
         case 'agent_plan_preview': {
           // Deduplicate — NATS JetStream may redeliver on reconnect
           const cmdId = p.commandId as string;
