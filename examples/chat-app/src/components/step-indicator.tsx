@@ -3,14 +3,7 @@
 import { useState } from 'react';
 import type { ChatStep } from '@/lib/types';
 
-function formatCellValue(value: unknown): string {
-  if (value === null || value === undefined) return '-';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return JSON.stringify(value);
-}
-
-/** Compact arguments display */
+/** Compact JSON display for arguments */
 function InlineArguments({ args }: { args: Record<string, unknown> }) {
   const entries = Object.entries(args).filter(
     ([, v]) => v !== null && v !== undefined && v !== ''
@@ -18,96 +11,47 @@ function InlineArguments({ args }: { args: Record<string, unknown> }) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="mt-1.5 bg-surface-50 border border-surface-200 rounded-lg p-2.5 space-y-0.5">
-      <div className="text-[9px] uppercase tracking-wider text-surface-400 font-medium mb-1">Arguments</div>
-      {entries.map(([key, value]) => (
-        <div key={key} className="flex gap-1.5 text-[11px] font-mono leading-relaxed">
-          <span className="text-surface-500 shrink-0">{key}:</span>
-          <span className="text-surface-700 break-all">
-            {typeof value === 'string'
-              ? value.length > 120 ? value.slice(0, 120) + '...' : value
-              : JSON.stringify(value, null, 0)}
+    <div className="mt-1.5 bg-surface-800 rounded-lg p-2.5 overflow-x-auto">
+      <div className="text-[9px] uppercase tracking-wider text-surface-500 font-medium mb-1">Arguments</div>
+      <pre className="text-[11px] leading-relaxed font-mono">
+        {JSON.stringify(Object.fromEntries(entries), null, 2).split('\n').map((line, i) => (
+          <span key={i} className="block">
+            {line.split(/("[^"]*":?|[\d.]+|true|false|null)/).map((part, j) => {
+              if (/^"[^"]*":$/.test(part)) return <span key={j} className="text-blue-400">{part}</span>;
+              if (/^"[^"]*"$/.test(part)) return <span key={j} className="text-green-400">{part}</span>;
+              if (/^\d+(\.\d+)?$/.test(part)) return <span key={j} className="text-amber-400">{part}</span>;
+              if (part === 'true' || part === 'false' || part === 'null') return <span key={j} className="text-purple-400">{part}</span>;
+              return <span key={j} className="text-surface-400">{part}</span>;
+            })}
           </span>
-        </div>
-      ))}
+        ))}
+      </pre>
     </div>
   );
 }
 
-/** Compact result display */
-function InlineResult({ data, outputSummary }: { data: unknown; outputSummary?: string }) {
-  const [showJson, setShowJson] = useState(false);
-
+/** Compact JSON result display */
+function InlineResult({ data }: { data: unknown; outputSummary?: string }) {
   if (data === null || data === undefined) return null;
-
-  // For simple output strings, just show inline
-  if (typeof data === 'object' && 'output' in (data as Record<string, unknown>)) {
-    const output = (data as Record<string, unknown>).output;
-    if (typeof output === 'string' && output.length < 200) {
-      return (
-        <div className="mt-1.5 text-[11px] text-surface-500 bg-surface-50 rounded-lg px-2.5 py-2 border border-surface-200">
-          {output}
-        </div>
-      );
-    }
-  }
-
-  const isArray = Array.isArray(data);
-  const isObject = typeof data === 'object' && !isArray;
 
   return (
     <div className="mt-1.5">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] uppercase tracking-wider text-surface-400 font-medium">
-          Output {isArray ? `(${(data as unknown[]).length} items)` : ''}
-        </span>
-        <button
-          onClick={() => setShowJson((p) => !p)}
-          className="text-[10px] text-surface-400 hover:text-surface-600 transition-colors"
-        >
-          {showJson ? 'Compact' : 'JSON'}
-        </button>
+      <div className="bg-surface-800 rounded-lg p-2.5 overflow-x-auto max-h-60 overflow-y-auto">
+        <div className="text-[9px] uppercase tracking-wider text-surface-500 font-medium mb-1">Output</div>
+        <pre className="text-[11px] leading-relaxed font-mono">
+          {JSON.stringify(data, null, 2).split('\n').map((line, i) => (
+            <span key={i} className="block">
+              {line.split(/("[^"]*":?|[\d.]+|true|false|null)/).map((part, j) => {
+                if (/^"[^"]*":$/.test(part)) return <span key={j} className="text-blue-400">{part}</span>;
+                if (/^"[^"]*"$/.test(part)) return <span key={j} className="text-green-400">{part}</span>;
+                if (/^\d+(\.\d+)?$/.test(part)) return <span key={j} className="text-amber-400">{part}</span>;
+                if (part === 'true' || part === 'false' || part === 'null') return <span key={j} className="text-purple-400">{part}</span>;
+                return <span key={j} className="text-surface-400">{part}</span>;
+              })}
+            </span>
+          ))}
+        </pre>
       </div>
-      {showJson ? (
-        <div className="bg-surface-50 border border-surface-200 rounded-lg p-2.5 overflow-x-auto max-h-48 overflow-y-auto">
-          <pre className="text-[10px] leading-relaxed text-surface-600 font-mono">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </div>
-      ) : isArray ? (
-        <div className="space-y-1 max-h-48 overflow-y-auto">
-          {(data as Record<string, unknown>[]).slice(0, 5).map((item, i) => (
-            <div key={i} className="bg-surface-50 border border-surface-200 rounded-lg px-2.5 py-1.5 text-[11px]">
-              {typeof item === 'object' && item !== null
-                ? Object.entries(item).slice(0, 4).map(([k, v]) => (
-                    <span key={k} className="mr-3">
-                      <span className="text-surface-400">{k}: </span>
-                      <span className="text-surface-700">{formatCellValue(v)}</span>
-                    </span>
-                  ))
-                : formatCellValue(item)}
-            </div>
-          ))}
-          {(data as unknown[]).length > 5 && (
-            <div className="text-[10px] text-surface-400 pl-2">
-              ...and {(data as unknown[]).length - 5} more
-            </div>
-          )}
-        </div>
-      ) : isObject ? (
-        <div className="bg-surface-50 border border-surface-200 rounded-lg px-2.5 py-1.5 space-y-0.5">
-          {Object.entries(data as Record<string, unknown>).slice(0, 8).map(([k, v]) => (
-            <div key={k} className="flex gap-1.5 text-[11px]">
-              <span className="text-surface-400 shrink-0">{k}:</span>
-              <span className="text-surface-700 break-all">{formatCellValue(v)}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-[11px] text-surface-500 bg-surface-50 rounded-lg px-2.5 py-2 border border-surface-200">
-          {formatCellValue(data)}
-        </div>
-      )}
     </div>
   );
 }
