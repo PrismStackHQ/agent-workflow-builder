@@ -41,6 +41,7 @@ export class ToolRegistryService {
           actionName: tool.actionName,
           displayName: tool.displayName,
           description: tool.description || null,
+          type: tool.type || null,
           inputSchema: (tool.inputSchema || undefined) as any,
           outputSchema: (tool.outputSchema || undefined) as any,
           rawDefinition: (tool.rawDefinition || undefined) as any,
@@ -156,6 +157,7 @@ export class ToolRegistryService {
           integrationKey: config.providerConfigKey,
           displayName: config.displayName,
           description: config.description,
+          type: 'proxy',
           inputSchema: (config.inputSchema || undefined) as any,
           outputSchema: (config.outputSchema || undefined) as any,
           rawDefinition: {
@@ -174,6 +176,7 @@ export class ToolRegistryService {
           actionName: config.actionName,
           displayName: config.displayName,
           description: config.description,
+          type: 'proxy',
           inputSchema: (config.inputSchema || undefined) as any,
           outputSchema: (config.outputSchema || undefined) as any,
           rawDefinition: {

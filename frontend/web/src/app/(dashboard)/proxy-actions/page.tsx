@@ -24,11 +24,18 @@ interface ProxyAction {
   transformerName: string | null;
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
+  type: string;
   isEnabled: boolean;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+const SOURCE_TYPE_COLORS: Record<string, string> = {
+  action: 'bg-blue-100 text-blue-700',
+  sync: 'bg-emerald-100 text-emerald-700',
+  proxy: 'bg-purple-100 text-purple-700',
+};
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'bg-emerald-100 text-emerald-700',
@@ -193,6 +200,7 @@ export default function ProxyActionsPage() {
                   <tr className="border-b border-gray-100">
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-6 py-3">Action</th>
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Provider</th>
+                    <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Source</th>
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Type</th>
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Method</th>
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Endpoint</th>
@@ -215,6 +223,11 @@ export default function ProxyActionsPage() {
                       <td className="px-3 py-3.5">
                         <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded-lg">
                           {action.providerConfigKey}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3.5">
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg ${SOURCE_TYPE_COLORS[action.type] || 'bg-gray-100 text-gray-600'}`}>
+                          {action.type}
                         </span>
                       </td>
                       <td className="px-3 py-3.5">

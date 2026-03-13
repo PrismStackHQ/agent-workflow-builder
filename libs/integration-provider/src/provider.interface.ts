@@ -3,6 +3,7 @@ export interface ToolDefinition {
   actionName: string;
   displayName: string;
   description: string;
+  type: string | null;
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
   rawDefinition: Record<string, unknown> | null;
