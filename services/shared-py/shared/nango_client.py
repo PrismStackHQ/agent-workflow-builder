@@ -4,7 +4,6 @@ Ports:
 - libs/integration-provider/src/providers/nango.provider.ts
 - libs/integration-provider/src/proxy/proxy-action.registry.ts
 - libs/integration-provider/src/proxy/declarative-config-interpreter.ts
-- libs/integration-provider/src/proxy/built-in-transformers.ts
 """
 
 import base64
@@ -108,242 +107,6 @@ def _filter_by_output_schema(data: Any, schema: dict) -> Any:
     return data
 
 
-# ── Built-in Transformers ──────────────────────────────────────────────────────
-
-
-def _extract_query(inp: dict, *keys: str) -> str:
-    for k in keys:
-        v = inp.get(k)
-        if v is not None and str(v).strip():
-            return str(v).strip()
-    return ""
-
-
-def _extract_limit(inp: dict, default: int = 10) -> int:
-    for k in ("maxResults", "limit", "max", "per_page", "pageSize"):
-        v = inp.get(k)
-        if v is not None:
-            try:
-                return int(v)
-            except (ValueError, TypeError):
-                pass
-    return default
-
-
-# Gmail
-def _gmail_search_params(inp: dict) -> dict[str, str]:
-    q = _extract_query(inp, "query", "q", "search", "keyword", "keywords", "subject")
-    params: dict[str, str] = {}
-    if q:
-        params["q"] = q
-    if inp.get("from"):
-        params["q"] = f"{params.get('q', '')} from:{inp['from']}".strip()
-    if inp.get("to"):
-        params["q"] = f"{params.get('q', '')} to:{inp['to']}".strip()
-    params["maxResults"] = str(_extract_limit(inp))
-    if inp.get("labelIds"):
-        params["labelIds"] = str(inp["labelIds"])
-    return params
-
-
-def _gmail_list_params(inp: dict) -> dict[str, str]:
-    return {"maxResults": str(_extract_limit(inp))}
-
-
-async def _gmail_search_enricher(data: Any, proxy_fetch: Any) -> Any:
-    messages = data if isinstance(data, list) else []
-    if not messages:
-        return messages
-    enriched = []
-    for msg in messages[:10]:
-        try:
-            detail = await proxy_fetch(
-                "GET",
-                f"/gmail/v1/users/me/messages/{msg['id']}",
-                {"format": "metadata", "metadataHeaders": "Subject,From,Date"},
-            )
-            headers = detail.get("payload", {}).get("headers", [])
-            get_h = lambda n: next(
-                (h["value"] for h in headers if h["name"].lower() == n.lower()), ""
-            )
-            enriched.append({
-                "id": msg["id"],
-                "threadId": msg.get("threadId", ""),
-                "subject": get_h("Subject"),
-                "from": get_h("From"),
-                "date": get_h("Date"),
-                "snippet": detail.get("snippet", ""),
-            })
-        except Exception:
-            enriched.append({
-                "id": msg["id"],
-                "threadId": msg.get("threadId", ""),
-                "subject": "", "from": "", "date": "", "snippet": "",
-            })
-    return enriched
-
-
-def _gmail_full_email_mapper(data: Any) -> Any:
-    headers = data.get("payload", {}).get("headers", [])
-    get_h = lambda n: next(
-        (h["value"] for h in headers if h["name"].lower() == n.lower()), ""
-    )
-    parts = data.get("payload", {}).get("parts", [])
-    return {
-        "id": data.get("id"),
-        "threadId": data.get("threadId"),
-        "subject": get_h("Subject"),
-        "from": get_h("From"),
-        "to": get_h("To"),
-        "date": get_h("Date"),
-        "snippet": data.get("snippet", ""),
-        "labelIds": data.get("labelIds", []),
-        "body": data.get("payload", {}).get("body", {}).get("data", "")
-               or (parts[0].get("body", {}).get("data", "") if parts else ""),
-        "hasAttachments": any(p.get("filename") for p in parts),
-        "attachments": [
-            {
-                "filename": p["filename"],
-                "mimeType": p.get("mimeType"),
-                "attachmentId": p.get("body", {}).get("attachmentId"),
-                "size": p.get("body", {}).get("size"),
-            }
-            for p in parts if p.get("filename")
-        ],
-    }
-
-
-def _gmail_rfc2822_sender(inp: dict) -> dict[str, Any]:
-    if inp.get("raw") and not inp.get("to"):
-        return {"raw": inp["raw"]}
-    to = str(inp.get("to", ""))
-    subject = str(inp.get("subject", "(no subject)"))
-    body = str(inp.get("body") or inp.get("text") or inp.get("content") or "")
-
-    # Check for file attachment
-    attachment_path = inp.get("attachmentPath") or inp.get("attachment") or inp.get("filePath")
-    logger.info(f"gmail_rfc2822_sender: to={to}, subject={subject}, attachmentPath={attachment_path}")
-
-    if attachment_path:
-        attachment_path = str(attachment_path).strip()
-        file_exists = os.path.isfile(attachment_path)
-        logger.info(f"gmail_rfc2822_sender: file_exists={file_exists}, path='{attachment_path}'")
-
-    if attachment_path and os.path.isfile(str(attachment_path).strip()):
-        # Build MIME multipart message with attachment using Python email library
-        from email.mime.base import MIMEBase
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-        from email import encoders
-        import mimetypes
-
-        attachment_path = str(attachment_path).strip()
-        msg = MIMEMultipart()
-        msg["To"] = to
-        if inp.get("cc"):
-            msg["Cc"] = str(inp["cc"])
-        msg["Subject"] = subject
-
-        # Text body
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-
-        # File attachment
-        filename = os.path.basename(attachment_path)
-        mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        maintype, subtype = mime_type.split("/", 1)
-
-        with open(attachment_path, "rb") as f:
-            attachment = MIMEBase(maintype, subtype)
-            attachment.set_payload(f.read())
-        encoders.encode_base64(attachment)
-        attachment.add_header("Content-Disposition", "attachment", filename=filename)
-        msg.attach(attachment)
-
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode().rstrip("=")
-        logger.info(f"gmail_rfc2822_sender: built MIME multipart with attachment '{filename}' ({len(raw)} chars)")
-        return {"raw": raw}
-    else:
-        cc = f"Cc: {inp['cc']}\r\n" if inp.get("cc") else ""
-        message = f"To: {to}\r\n{cc}Subject: {subject}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{body}"
-        raw = base64.urlsafe_b64encode(message.encode()).decode().rstrip("=")
-        logger.info(f"gmail_rfc2822_sender: built plain text message ({len(raw)} chars)")
-        return {"raw": raw}
-
-
-# Google Drive
-def _drive_search_params(inp: dict) -> dict[str, str]:
-    q = _extract_query(inp, "query", "q", "fileName", "name", "search", "keyword", "keywords")
-    parts = []
-    if q:
-        parts.append(f"name contains '{q}'")
-    if inp.get("mimeType"):
-        parts.append(f"mimeType='{inp['mimeType']}'")
-    parts.append("trashed=false")
-    return {
-        "q": " and ".join(parts),
-        "pageSize": str(_extract_limit(inp)),
-        "fields": "files(id,name,mimeType,modifiedTime,webViewLink)",
-    }
-
-
-def _drive_create_folder_body(inp: dict) -> dict[str, Any]:
-    name = str(inp.get("folderName") or inp.get("name") or "New Folder")
-    body: dict[str, Any] = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
-    if inp.get("parentId"):
-        body["parents"] = [str(inp["parentId"])]
-    return body
-
-
-def _drive_upload_file_body(inp: dict) -> dict[str, Any]:
-    name = str(inp.get("fileName") or inp.get("name") or "Untitled")
-    body: dict[str, Any] = {"name": name}
-    if inp.get("folderId"):
-        body["parents"] = [str(inp["folderId"])]
-    if inp.get("mimeType"):
-        body["mimeType"] = str(inp["mimeType"])
-    if inp.get("description") or inp.get("content"):
-        desc = str(inp.get("description") or inp.get("content"))
-        body["description"] = desc[:797] + "..." if len(desc) > 800 else desc
-    return body
-
-
-# Slack
-def _slack_post_message_body(inp: dict) -> dict[str, Any]:
-    body: dict[str, Any] = {"channel": inp.get("channel"), "text": inp.get("text")}
-    if inp.get("blocks"):
-        body["blocks"] = inp["blocks"]
-    return body
-
-
-# Notion
-def _notion_search_body(inp: dict) -> dict[str, Any]:
-    q = _extract_query(inp, "query", "q", "search", "keyword")
-    body: dict[str, Any] = {}
-    if q:
-        body["query"] = q
-    if inp.get("filter"):
-        body["filter"] = inp["filter"]
-    if inp.get("sort"):
-        body["sort"] = inp["sort"]
-    body["page_size"] = _extract_limit(inp)
-    return body
-
-
-BUILT_IN_TRANSFORMERS: dict[str, dict[str, Any]] = {
-    "gmail_search_params": {"params_builder": _gmail_search_params},
-    "gmail_list_params": {"params_builder": _gmail_list_params},
-    "gmail_search_enricher": {"post_processor": _gmail_search_enricher},
-    "gmail_list_enricher": {"post_processor": _gmail_search_enricher},
-    "gmail_full_email_mapper": {"response_mapper": _gmail_full_email_mapper},
-    "gmail_rfc2822_sender": {"body_builder": _gmail_rfc2822_sender},
-    "drive_search_params": {"params_builder": _drive_search_params},
-    "drive_create_folder_body": {"body_builder": _drive_create_folder_body},
-    "drive_upload_file_body": {"body_builder": _drive_upload_file_body},
-    "slack_post_message_body": {"body_builder": _slack_post_message_body},
-    "notion_search_body": {"body_builder": _notion_search_body},
-}
-
-
 # ── DeclarativeConfigInterpreter ──────────────────────────────────────────────
 
 
@@ -351,16 +114,6 @@ class DeclarativeConfigInterpreter:
     """Converts ProxyActionDefinition DB rows into ProxyActionConfig objects."""
 
     def interpret(self, row: ProxyActionDefinition) -> ProxyActionConfig:
-        overrides: dict[str, Any] = {}
-        if row.transformerName:
-            for name in row.transformerName.split("+"):
-                name = name.strip()
-                t = BUILT_IN_TRANSFORMERS.get(name)
-                if t:
-                    overrides.update(t)
-                else:
-                    logger.warning(f"Unknown transformer '{name}' for {row.providerConfigKey}::{row.actionName}")
-
         # Auto-enrich inputSchema with fields from queryBuilder/bodyTemplate
         enriched_input_schema = self._enrich_input_schema(
             row.inputSchema, row.paramsConfig, row.bodyConfig, row.endpoint,
@@ -397,11 +150,11 @@ class DeclarativeConfigInterpreter:
                         params_cfg = {}
                     params_cfg["mappings"] = params_cfg.get("mappings", []) + auto_mappings
 
-        config.params_builder = overrides.get("params_builder") or self._build_params_builder(params_cfg, row.outputSchema)
-        config.body_builder = overrides.get("body_builder") or self._build_body_builder(body_cfg)
-        config.headers_builder = overrides.get("headers_builder") or self._build_headers_builder(row.headersConfig)
-        config.response_mapper = overrides.get("response_mapper") or self._build_response_mapper(row.responseConfig)
-        config.post_processor = overrides.get("post_processor") or self._build_post_processor(row.postProcessConfig)
+        config.params_builder = self._build_params_builder(params_cfg, row.outputSchema)
+        config.body_builder = self._build_body_builder(body_cfg)
+        config.headers_builder = self._build_headers_builder(row.headersConfig)
+        config.response_mapper = self._build_response_mapper(row.responseConfig)
+        config.post_processor = self._build_post_processor(row.postProcessConfig)
 
         return config
 
@@ -512,7 +265,9 @@ class DeclarativeConfigInterpreter:
                 val = None
                 for k in all_keys:
                     if inp.get(k) is not None:
-                        val = str(inp[k])
+                        raw = inp[k]
+                        # Coerce floats to integers for numeric params (e.g. 10.0 → "10")
+                        val = str(int(raw)) if isinstance(raw, float) else str(raw)
                         break
                 if val is not None:
                     result[m["to"]] = val
@@ -540,6 +295,10 @@ class DeclarativeConfigInterpreter:
             return None
 
         def builder(inp: dict) -> dict[str, Any]:
+            # MIME encode for email sending
+            if cfg.get("mimeEncode"):
+                return self._build_mime_message(inp)
+
             result: dict[str, Any] = {}
             if cfg.get("defaults"):
                 result.update(cfg["defaults"])
@@ -568,17 +327,132 @@ class DeclarativeConfigInterpreter:
 
         return builder
 
+    @staticmethod
+    def _build_mime_message(inp: dict) -> dict[str, Any]:
+        """Build RFC2822 MIME message for email sending."""
+        if inp.get("raw") and not inp.get("to"):
+            return {"raw": inp["raw"]}
+        to = str(inp.get("to", ""))
+        subject = str(inp.get("subject", "(no subject)"))
+        body = str(inp.get("body") or inp.get("text") or inp.get("content") or "")
+
+        attachment_path = inp.get("attachmentPath") or inp.get("attachment") or inp.get("filePath")
+        logger.info(f"mimeEncode: to={to}, subject={subject}, attachmentPath={attachment_path}")
+
+        if attachment_path and os.path.isfile(str(attachment_path).strip()):
+            from email.mime.base import MIMEBase
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            from email import encoders
+            import mimetypes
+
+            attachment_path = str(attachment_path).strip()
+            msg = MIMEMultipart()
+            msg["To"] = to
+            if inp.get("cc"):
+                msg["Cc"] = str(inp["cc"])
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+
+            filename = os.path.basename(attachment_path)
+            mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            maintype, subtype = mime_type.split("/", 1)
+            with open(attachment_path, "rb") as f:
+                attachment = MIMEBase(maintype, subtype)
+                attachment.set_payload(f.read())
+            encoders.encode_base64(attachment)
+            attachment.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(attachment)
+
+            raw = base64.urlsafe_b64encode(msg.as_bytes()).decode().rstrip("=")
+            logger.info(f"mimeEncode: built MIME multipart with attachment '{filename}' ({len(raw)} chars)")
+            return {"raw": raw}
+        else:
+            cc = f"Cc: {inp['cc']}\r\n" if inp.get("cc") else ""
+            message = f"To: {to}\r\n{cc}Subject: {subject}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{body}"
+            raw = base64.urlsafe_b64encode(message.encode()).decode().rstrip("=")
+            logger.info(f"mimeEncode: built plain text message ({len(raw)} chars)")
+            return {"raw": raw}
+
     def _build_headers_builder(self, cfg: Any) -> HeadersBuilder | None:
         if not cfg or not cfg.get("static"):
             return None
         static = cfg["static"]
         return lambda _: dict(static)
 
+    @staticmethod
+    def _get_nested_value(obj: Any, path: str) -> Any:
+        """Navigate nested path like 'payload.headers'."""
+        for key in path.split("."):
+            if isinstance(obj, dict):
+                obj = obj.get(key)
+            else:
+                return None
+        return obj
+
+    @staticmethod
+    def _apply_extract_headers(data: Any, eh: dict) -> dict[str, str]:
+        """Extract values from a key-value array (e.g., Gmail payload.headers)."""
+        arr = DeclarativeConfigInterpreter._get_nested_value(data, eh["path"])
+        if not isinstance(arr, list):
+            return {}
+        result: dict[str, str] = {}
+        for header_name, output_key in eh["pick"].items():
+            found = next(
+                (h[eh["valueField"]] for h in arr
+                 if isinstance(h, dict) and h.get(eh["keyField"], "").lower() == header_name.lower()),
+                "",
+            )
+            result[output_key] = found
+        return result
+
     def _build_response_mapper(self, cfg: Any) -> ResponseMapper | None:
         if not cfg:
             return None
 
         def mapper(data: Any) -> Any:
+            # Complex single-object mapping (extractHeaders + mergeFields + bodyExtract + attachmentExtract)
+            if cfg.get("extractHeaders") or cfg.get("mergeFields") or cfg.get("bodyExtract") or cfg.get("attachmentExtract"):
+                mapped: dict[str, Any] = {}
+
+                if cfg.get("extractHeaders"):
+                    mapped.update(self._apply_extract_headers(data, cfg["extractHeaders"]))
+
+                if cfg.get("mergeFields"):
+                    for from_key, to_key in cfg["mergeFields"].items():
+                        if isinstance(data, dict):
+                            mapped[to_key] = data.get(from_key)
+
+                if cfg.get("bodyExtract"):
+                    be = cfg["bodyExtract"]
+                    parts = self._get_nested_value(data, be["partsPath"])
+                    body_data = ""
+                    if isinstance(parts, list):
+                        match = next((p for p in parts if p.get("mimeType") == be["mimeType"]), None)
+                        body_data = match.get("body", {}).get("data", "") if match else ""
+                    if not body_data:
+                        body_data = self._get_nested_value(data, be["fallbackPath"]) or ""
+                    mapped[be["outputField"]] = body_data
+
+                if cfg.get("attachmentExtract"):
+                    ae = cfg["attachmentExtract"]
+                    parts = self._get_nested_value(data, ae["partsPath"]) or []
+                    attachments = [
+                        {
+                            "filename": p[ae["filenameField"]],
+                            "mimeType": p.get("mimeType"),
+                            "attachmentId": (p.get("body") or {}).get("attachmentId"),
+                            "size": (p.get("body") or {}).get("size"),
+                        }
+                        for p in parts if isinstance(p, dict) and p.get(ae["filenameField"])
+                    ] if isinstance(parts, list) else []
+                    mapped[ae["outputField"]] = attachments
+                    if ae.get("hasField"):
+                        mapped[ae["hasField"]] = len(attachments) > 0
+
+                return mapped
+
+            # Standard response mapping
             result = data
             if cfg.get("rootPath"):
                 result = (data or {}).get(cfg["rootPath"], [])
@@ -619,9 +493,12 @@ class DeclarativeConfigInterpreter:
                     )
                     detail = await proxy_fetch("GET", endpoint, enrich.get("params"))
                     merged = dict(item)
-                    for f in enrich["merge"]:
+                    for f in enrich.get("merge", []):
                         if detail.get(f) is not None:
                             merged[f] = detail[f]
+                    # Extract from key-value arrays (e.g., Gmail headers)
+                    if enrich.get("extractHeaders"):
+                        merged.update(self._apply_extract_headers(detail, enrich["extractHeaders"]))
                     enriched.append(merged)
                 except Exception:
                     enriched.append(item)

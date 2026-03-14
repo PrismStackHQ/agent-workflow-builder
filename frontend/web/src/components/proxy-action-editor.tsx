@@ -33,7 +33,6 @@ interface ProxyAction {
   headersConfig: Record<string, unknown> | null;
   responseConfig: Record<string, unknown> | null;
   postProcessConfig: Record<string, unknown> | null;
-  transformerName: string | null;
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
   isEnabled: boolean;
@@ -54,7 +53,6 @@ export function ProxyActionEditor({ action, onSave, onDelete, onClose }: Props) 
     actionType: action.actionType,
     method: action.method,
     endpoint: action.endpoint,
-    transformerName: action.transformerName || '',
     providerConfigKey: action.providerConfigKey,
     actionName: action.actionName,
   });
@@ -93,7 +91,6 @@ export function ProxyActionEditor({ action, onSave, onDelete, onClose }: Props) 
         actionType: form.actionType,
         method: form.method,
         endpoint: form.endpoint,
-        transformerName: form.transformerName || null,
         providerConfigKey: form.providerConfigKey,
         actionName: form.actionName,
       };
@@ -186,20 +183,6 @@ export function ProxyActionEditor({ action, onSave, onDelete, onClose }: Props) 
                 <FieldInput label="Description" value={form.description} onChange={(v) => handleFieldChange('description', v)} />
               </div>
               <FieldInput label="Provider Config Key" value={form.providerConfigKey} onChange={(v) => handleFieldChange('providerConfigKey', v)} mono />
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Transformer</label>
-                <select
-                  value={form.transformerName}
-                  onChange={(e) => handleFieldChange('transformerName', e.target.value)}
-                  className="w-full px-4 py-3 text-sm font-mono border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 hover:border-gray-300 transition-all"
-                >
-                  <option value="">None</option>
-                  <option value="gmail_search_enricher">gmail_search_enricher</option>
-                  <option value="gmail_list_enricher">gmail_list_enricher</option>
-                  <option value="gmail_full_email_mapper">gmail_full_email_mapper</option>
-                  <option value="gmail_rfc2822_sender">gmail_rfc2822_sender</option>
-                </select>
-              </div>
             </div>
           </section>
 

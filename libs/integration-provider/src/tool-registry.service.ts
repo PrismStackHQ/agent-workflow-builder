@@ -113,7 +113,6 @@ export class ToolRegistryService {
             headersConfig: (template.headersConfig || undefined) as any,
             responseConfig: (template.responseConfig || undefined) as any,
             postProcessConfig: (template.postProcessConfig || undefined) as any,
-            transformerName: template.transformerName || null,
             inputSchema: (template.inputSchema || undefined) as any,
             outputSchema: (template.outputSchema || undefined) as any,
             isDefault: true,

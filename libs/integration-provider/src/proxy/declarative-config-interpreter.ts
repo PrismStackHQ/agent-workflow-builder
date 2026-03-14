@@ -1,6 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ActionType, HttpMethod, ProxyActionConfig } from './proxy-action.types';
-import { getTransformer, TransformerOverrides } from './built-in-transformers';
 
 /**
  * Declarative config shapes stored as JSON in ProxyActionDefinition rows.
@@ -36,20 +35,15 @@ export interface ParamsConfig {
   fieldsParam?: FieldsParam; // auto-derive API fields param from outputSchema
 }
 
-export interface BodyConfig {
-  mappings?: ParamMapping[];
-  defaults?: Record<string, unknown>;
-  template?: Record<string, unknown>;
-}
-
 export interface HeadersConfig {
   static?: Record<string, string>;
 }
 
-export interface ResponseConfig {
-  rootPath?: string;
-  pick?: string[];
-  flatten?: boolean;
+export interface ExtractHeaders {
+  path: string;           // e.g. "payload.headers"
+  keyField: string;       // e.g. "name"
+  valueField: string;     // e.g. "value"
+  pick: Record<string, string>; // e.g. { "Subject": "subject", "From": "from" }
 }
 
 export interface PostProcessConfig {
@@ -58,8 +52,36 @@ export interface PostProcessConfig {
     endpoint: string;
     params?: Record<string, string>;
     merge: string[];
+    extractHeaders?: ExtractHeaders;
     limit?: number;
   };
+}
+
+export interface ResponseConfig {
+  rootPath?: string;
+  pick?: string[];
+  flatten?: boolean;
+  extractHeaders?: ExtractHeaders;
+  mergeFields?: Record<string, string>; // e.g. { "id": "id", "snippet": "snippet" }
+  bodyExtract?: {
+    partsPath: string;     // e.g. "payload.parts"
+    fallbackPath: string;  // e.g. "payload.body.data"
+    mimeType: string;      // e.g. "text/plain"
+    outputField: string;   // e.g. "body"
+  };
+  attachmentExtract?: {
+    partsPath: string;     // e.g. "payload.parts"
+    filenameField: string; // e.g. "filename"
+    outputField: string;   // e.g. "attachments"
+    hasField?: string;     // e.g. "hasAttachments"
+  };
+}
+
+export interface BodyConfig {
+  mappings?: ParamMapping[];
+  defaults?: Record<string, unknown>;
+  template?: Record<string, unknown>;
+  mimeEncode?: boolean; // Build RFC2822 MIME message (for email sending)
 }
 
 /**
@@ -81,7 +103,6 @@ export interface ProxyActionDefinitionRow {
   headersConfig: unknown;
   responseConfig: unknown;
   postProcessConfig: unknown;
-  transformerName: string | null;
   inputSchema: unknown;
   outputSchema: unknown;
   isEnabled: boolean;
@@ -91,33 +112,10 @@ export interface ProxyActionDefinitionRow {
 /**
  * Converts ProxyActionDefinition DB rows (with declarative JSON configs)
  * into runtime ProxyActionConfig objects with real JavaScript functions.
- *
- * For actions that reference a transformerName, the built-in transformer's
- * functions take precedence over the declarative config.
  */
 @Injectable()
 export class DeclarativeConfigInterpreter {
-  private readonly logger = new Logger(DeclarativeConfigInterpreter.name);
-
   interpret(def: ProxyActionDefinitionRow): ProxyActionConfig {
-    // Load built-in transformer overrides if specified.
-    // Supports compound names like "gmail_search_params+gmail_search_enricher"
-    // which merges multiple transformers (later ones override earlier ones per field).
-    const transformerOverrides: TransformerOverrides = {};
-    if (def.transformerName) {
-      const names = def.transformerName.split('+').map((n) => n.trim());
-      for (const name of names) {
-        const t = getTransformer(name);
-        if (t) {
-          Object.assign(transformerOverrides, t);
-        } else {
-          this.logger.warn(
-            `Unknown transformer "${name}" for ${def.providerConfigKey}::${def.actionName}`,
-          );
-        }
-      }
-    }
-
     // Auto-enrich inputSchema with fields from queryBuilder/bodyTemplate
     // so the LLM planner knows about dynamically added parameters
     const enrichedInputSchema = this.enrichInputSchema(
@@ -170,26 +168,11 @@ export class DeclarativeConfigInterpreter {
       }
     }
 
-    // Transformer overrides take precedence over declarative config
-    config.paramsBuilder =
-      transformerOverrides.paramsBuilder ||
-      this.buildParamsBuilder(effectiveParamsConfig, outputSchema);
-
-    config.bodyBuilder =
-      transformerOverrides.bodyBuilder ||
-      this.buildBodyBuilder(effectiveBodyConfig);
-
-    config.headersBuilder =
-      transformerOverrides.headersBuilder ||
-      this.buildHeadersBuilder(def.headersConfig as HeadersConfig | null);
-
-    config.responseMapper =
-      transformerOverrides.responseMapper ||
-      this.buildResponseMapper(def.responseConfig as ResponseConfig | null);
-
-    config.postProcessor =
-      transformerOverrides.postProcessor ||
-      this.buildPostProcessor(def.postProcessConfig as PostProcessConfig | null);
+    config.paramsBuilder = this.buildParamsBuilder(effectiveParamsConfig, outputSchema);
+    config.bodyBuilder = this.buildBodyBuilder(effectiveBodyConfig);
+    config.headersBuilder = this.buildHeadersBuilder(def.headersConfig as HeadersConfig | null);
+    config.responseMapper = this.buildResponseMapper(def.responseConfig as ResponseConfig | null);
+    config.postProcessor = this.buildPostProcessor(def.postProcessConfig as PostProcessConfig | null);
 
     return config;
   }
@@ -227,7 +210,9 @@ export class DeclarativeConfigInterpreter {
 
           for (const key of allKeys) {
             if (input[key] !== undefined && input[key] !== null) {
-              value = String(input[key]);
+              const raw = input[key];
+              // Coerce floats to integers for numeric params (e.g. 10.0 → "10")
+              value = typeof raw === 'number' ? String(Math.trunc(raw)) : String(raw);
               break;
             }
           }
@@ -447,8 +432,64 @@ export class DeclarativeConfigInterpreter {
         }
       }
 
+      // MIME encode for email sending (replaces gmail_rfc2822_sender transformer)
+      if (config.mimeEncode) {
+        return this.buildMimeMessage(input);
+      }
+
       return result;
     };
+  }
+
+  private buildMimeMessage(input: Record<string, unknown>): Record<string, unknown> {
+    // If raw is provided directly, use it as-is
+    if (input.raw && !input.to) return { raw: input.raw };
+
+    const to = String(input.to || '');
+    const subject = String(input.subject || '(no subject)');
+    const body = String(input.body || input.text || input.content || '');
+    const cc = input.cc ? `Cc: ${input.cc}\r\n` : '';
+    const attachmentPath = input.attachmentPath || input.attachment || input.filePath;
+
+    if (attachmentPath) {
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = String(attachmentPath);
+
+      if (fs.existsSync(filePath)) {
+        const fileName = path.basename(filePath);
+        const fileContent = fs.readFileSync(filePath);
+        const fileBase64 = fileContent.toString('base64');
+        const ext = path.extname(fileName).toLowerCase();
+        const mimeTypes: Record<string, string> = {
+          '.pdf': 'application/pdf',
+          '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          '.csv': 'text/csv', '.txt': 'text/plain', '.json': 'application/json',
+          '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        };
+        const mimeType = mimeTypes[ext] || 'application/octet-stream';
+        const boundary = `boundary_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const parts = [
+          `To: ${to}`, ...(input.cc ? [`Cc: ${input.cc}`] : []),
+          `Subject: ${subject}`, 'MIME-Version: 1.0',
+          `Content-Type: multipart/mixed; boundary="${boundary}"`, '',
+          `--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', '', body, '',
+          `--${boundary}`, `Content-Type: ${mimeType}; name="${fileName}"`,
+          'Content-Transfer-Encoding: base64',
+          `Content-Disposition: attachment; filename="${fileName}"`, '', fileBase64, '',
+          `--${boundary}--`,
+        ];
+        const raw = Buffer.from(parts.join('\r\n')).toString('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        return { raw };
+      }
+    }
+
+    // Plain text email (no attachment)
+    const message = `To: ${to}\r\n${cc}Subject: ${subject}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
+    const raw = Buffer.from(message).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return { raw };
   }
 
   private buildHeadersBuilder(
@@ -460,6 +501,25 @@ export class DeclarativeConfigInterpreter {
     return () => ({ ...staticHeaders });
   }
 
+  /** Navigate nested path like "payload.headers" */
+  private getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((o, k) => o?.[k], obj);
+  }
+
+  /** Extract values from a key-value array (e.g., Gmail payload.headers) */
+  private applyExtractHeaders(data: any, config: ExtractHeaders): Record<string, string> {
+    const arr = this.getNestedValue(data, config.path);
+    if (!Array.isArray(arr)) return {};
+    const result: Record<string, string> = {};
+    for (const [headerName, outputKey] of Object.entries(config.pick)) {
+      const found = arr.find(
+        (h: any) => h[config.keyField]?.toLowerCase() === headerName.toLowerCase(),
+      );
+      result[outputKey] = found?.[config.valueField] || '';
+    }
+    return result;
+  }
+
   private buildResponseMapper(
     config: ResponseConfig | null,
   ): ProxyActionConfig['responseMapper'] | undefined {
@@ -468,17 +528,66 @@ export class DeclarativeConfigInterpreter {
     return (data: unknown) => {
       let result = data;
 
-      // Extract from root path (e.g. "files", "messages", "results")
+      // Complex single-object mapping (extractHeaders + mergeFields + bodyExtract + attachmentExtract)
+      if (config.extractHeaders || config.mergeFields || config.bodyExtract || config.attachmentExtract) {
+        const mapped: Record<string, unknown> = {};
+        const raw = data as any;
+
+        // Extract from key-value arrays (e.g., Gmail headers)
+        if (config.extractHeaders) {
+          Object.assign(mapped, this.applyExtractHeaders(raw, config.extractHeaders));
+        }
+
+        // Merge top-level fields
+        if (config.mergeFields) {
+          for (const [from, to] of Object.entries(config.mergeFields)) {
+            mapped[to] = raw?.[from];
+          }
+        }
+
+        // Extract body from nested parts
+        if (config.bodyExtract) {
+          const { partsPath, fallbackPath, mimeType, outputField } = config.bodyExtract;
+          const parts = this.getNestedValue(raw, partsPath);
+          let bodyData = '';
+          if (Array.isArray(parts)) {
+            const match = parts.find((p: any) => p.mimeType === mimeType);
+            bodyData = match?.body?.data || '';
+          }
+          if (!bodyData) {
+            bodyData = this.getNestedValue(raw, fallbackPath) || '';
+          }
+          mapped[outputField] = bodyData;
+        }
+
+        // Extract attachments from parts
+        if (config.attachmentExtract) {
+          const { partsPath, filenameField, outputField, hasField } = config.attachmentExtract;
+          const parts = this.getNestedValue(raw, partsPath) || [];
+          const attachments = Array.isArray(parts)
+            ? parts
+                .filter((p: any) => p[filenameField])
+                .map((p: any) => ({
+                  filename: p[filenameField],
+                  mimeType: p.mimeType,
+                  attachmentId: p.body?.attachmentId,
+                  size: p.body?.size,
+                }))
+            : [];
+          mapped[outputField] = attachments;
+          if (hasField) mapped[hasField] = attachments.length > 0;
+        }
+
+        return mapped;
+      }
+
+      // Standard response mapping
       if (config.rootPath) {
         result = (data as any)?.[config.rootPath] ?? [];
       }
-
-      // Flatten nested arrays
       if (config.flatten && Array.isArray(result)) {
         result = result.flat();
       }
-
-      // Pick specific fields from each item
       if (config.pick && Array.isArray(result)) {
         result = (result as any[]).map((item) => {
           const picked: Record<string, unknown> = {};
@@ -520,6 +629,10 @@ export class DeclarativeConfigInterpreter {
               if (detail?.[field] !== undefined) {
                 merged[field] = detail[field];
               }
+            }
+            // Extract from key-value arrays (e.g., Gmail headers)
+            if (enrichConfig.extractHeaders) {
+              Object.assign(merged, this.applyExtractHeaders(detail, enrichConfig.extractHeaders));
             }
             return merged;
           } catch {

@@ -13,8 +13,6 @@ export class UpdateProxyActionDto {
   responseConfig?: Record<string, unknown>;
   postProcessConfig?: Record<string, unknown>;
 
-  transformerName?: string | null;
-
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
 }

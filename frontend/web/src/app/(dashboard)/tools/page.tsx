@@ -34,7 +34,7 @@ interface ProxyAction {
   headersConfig: Record<string, unknown> | null;
   responseConfig: Record<string, unknown> | null;
   postProcessConfig: Record<string, unknown> | null;
-  transformerName: string | null;
+
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
   type: string;

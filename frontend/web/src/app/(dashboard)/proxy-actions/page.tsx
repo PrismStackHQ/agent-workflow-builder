@@ -21,7 +21,7 @@ interface ProxyAction {
   headersConfig: Record<string, unknown> | null;
   responseConfig: Record<string, unknown> | null;
   postProcessConfig: Record<string, unknown> | null;
-  transformerName: string | null;
+
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
   type: string;
@@ -204,7 +204,6 @@ export default function ProxyActionsPage() {
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Type</th>
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Method</th>
                     <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Endpoint</th>
-                    <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Transformer</th>
                     <th className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-3">Enabled</th>
                     <th className="px-3 py-3"></th>
                   </tr>
@@ -244,15 +243,6 @@ export default function ProxyActionsPage() {
                         <span className="text-xs font-mono text-gray-500 max-w-[200px] truncate block">
                           {action.endpoint}
                         </span>
-                      </td>
-                      <td className="px-3 py-3.5">
-                        {action.transformerName ? (
-                          <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">
-                            {action.transformerName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-300">-</span>
-                        )}
                       </td>
                       <td className="px-3 py-3.5 text-center">
                         <button

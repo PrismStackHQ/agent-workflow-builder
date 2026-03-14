@@ -22,7 +22,6 @@ export interface ProxyActionTemplate {
   headersConfig?: Record<string, unknown>;
   responseConfig?: Record<string, unknown>;
   postProcessConfig?: Record<string, unknown>;
-  transformerName?: string;
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
 }
@@ -192,7 +191,6 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Search for emails in Gmail using query syntax (subject, from, label, etc.)',
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
-      transformerName: 'gmail_search_enricher',
       paramsConfig: {
         queryBuilder: {
           target: 'q',
@@ -206,6 +204,20 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
         },
       },
       responseConfig: { rootPath: 'messages' },
+      postProcessConfig: {
+        enrichment: {
+          endpoint: '/gmail/v1/users/me/messages/{{id}}',
+          params: { format: 'metadata', metadataHeaders: 'Subject,From,Date' },
+          merge: ['snippet'],
+          extractHeaders: {
+            path: 'payload.headers',
+            keyField: 'name',
+            valueField: 'value',
+            pick: { Subject: 'subject', From: 'from', Date: 'date' },
+          },
+          limit: 10,
+        },
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -240,8 +252,21 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'List recent emails from the inbox',
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
-      transformerName: 'gmail_list_enricher',
       responseConfig: { rootPath: 'messages' },
+      postProcessConfig: {
+        enrichment: {
+          endpoint: '/gmail/v1/users/me/messages/{{id}}',
+          params: { format: 'metadata', metadataHeaders: 'Subject,From,Date' },
+          merge: ['snippet'],
+          extractHeaders: {
+            path: 'payload.headers',
+            keyField: 'name',
+            valueField: 'value',
+            pick: { Subject: 'subject', From: 'from', Date: 'date' },
+          },
+          limit: 10,
+        },
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -257,7 +282,27 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages/{{messageId}}',
       paramsConfig: { defaults: { format: 'full' } },
-      transformerName: 'gmail_full_email_mapper',
+      responseConfig: {
+        extractHeaders: {
+          path: 'payload.headers',
+          keyField: 'name',
+          valueField: 'value',
+          pick: { Subject: 'subject', From: 'from', To: 'to', Date: 'date' },
+        },
+        mergeFields: { id: 'id', threadId: 'threadId', snippet: 'snippet', labelIds: 'labelIds' },
+        bodyExtract: {
+          partsPath: 'payload.parts',
+          fallbackPath: 'payload.body.data',
+          mimeType: 'text/plain',
+          outputField: 'body',
+        },
+        attachmentExtract: {
+          partsPath: 'payload.parts',
+          filenameField: 'filename',
+          outputField: 'attachments',
+          hasField: 'hasAttachments',
+        },
+      },
       inputSchema: {
         type: 'object',
         required: ['messageId'],
@@ -321,7 +366,7 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Send an email via Gmail with optional file attachment. Pass attachmentPath from generate_pdf/generate_excel/generate_csv to attach a file.',
       method: 'POST',
       endpoint: '/gmail/v1/users/me/messages/send',
-      transformerName: 'gmail_rfc2822_sender',
+      bodyConfig: { mimeEncode: true },
       inputSchema: {
         type: 'object',
         required: ['to', 'subject', 'body'],

@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
-import { ProxyActionRegistry, getTransformerNames } from '@agent-workflow/integration-provider';
+import { ProxyActionRegistry } from '@agent-workflow/integration-provider';
 import { CreateProxyActionDto } from './dto/create-proxy-action.dto';
 import { UpdateProxyActionDto } from './dto/update-proxy-action.dto';
 
@@ -54,7 +54,6 @@ export class ProxyActionsService {
         headersConfig: dto.headersConfig as any,
         responseConfig: dto.responseConfig as any,
         postProcessConfig: dto.postProcessConfig as any,
-        transformerName: dto.transformerName || null,
         inputSchema: dto.inputSchema as any,
         outputSchema: dto.outputSchema as any,
         isDefault: false,
@@ -75,18 +74,6 @@ export class ProxyActionsService {
     if (dto.method && !VALID_METHODS.includes(dto.method)) {
       throw new BadRequestException(`Invalid method: ${dto.method}`);
     }
-    if (dto.transformerName !== undefined && dto.transformerName !== null) {
-      const validNames = getTransformerNames();
-      // Support chained transformers with "+" separator (e.g. "gmail_search_params+gmail_search_enricher")
-      const parts = dto.transformerName.split('+').map((n) => n.trim());
-      for (const part of parts) {
-        if (!validNames.includes(part)) {
-          throw new BadRequestException(
-            `Unknown transformer: ${part}. Valid: ${validNames.join(', ')}`,
-          );
-        }
-      }
-    }
 
     const updated = await this.prisma.proxyActionDefinition.update({
       where: { id: existing.id },
@@ -103,7 +90,6 @@ export class ProxyActionsService {
         ...(dto.headersConfig !== undefined && { headersConfig: dto.headersConfig as any }),
         ...(dto.responseConfig !== undefined && { responseConfig: dto.responseConfig as any }),
         ...(dto.postProcessConfig !== undefined && { postProcessConfig: dto.postProcessConfig as any }),
-        ...(dto.transformerName !== undefined && { transformerName: dto.transformerName }),
         ...(dto.inputSchema !== undefined && { inputSchema: dto.inputSchema as any }),
         ...(dto.outputSchema !== undefined && { outputSchema: dto.outputSchema as any }),
       },
@@ -160,17 +146,6 @@ export class ProxyActionsService {
       throw new BadRequestException(
         `Invalid method: ${dto.method}. Valid: ${VALID_METHODS.join(', ')}`,
       );
-    }
-    if (dto.transformerName) {
-      const validNames = getTransformerNames();
-      const parts = dto.transformerName.split('+').map((n) => n.trim());
-      for (const part of parts) {
-        if (!validNames.includes(part)) {
-          throw new BadRequestException(
-            `Unknown transformer: ${part}. Valid: ${validNames.join(', ')}`,
-          );
-        }
-      }
     }
   }
 }
