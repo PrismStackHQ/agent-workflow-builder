@@ -361,6 +361,11 @@ class DeclarativeConfigInterpreter:
                 else:
                     logger.warning(f"Unknown transformer '{name}' for {row.providerConfigKey}::{row.actionName}")
 
+        # Auto-enrich inputSchema with fields from queryBuilder/bodyTemplate
+        enriched_input_schema = self._enrich_input_schema(
+            row.inputSchema, row.paramsConfig, row.bodyConfig, row.endpoint,
+        )
+
         config = ProxyActionConfig(
             provider_config_key=row.providerConfigKey,
             action_name=row.actionName,
@@ -369,17 +374,122 @@ class DeclarativeConfigInterpreter:
             description=row.description or "",
             method=row.method,
             endpoint=row.endpoint,
-            input_schema=row.inputSchema,
+            input_schema=enriched_input_schema,
             output_schema=row.outputSchema,
         )
 
-        config.params_builder = overrides.get("params_builder") or self._build_params_builder(row.paramsConfig, row.outputSchema)
-        config.body_builder = overrides.get("body_builder") or self._build_body_builder(row.bodyConfig)
+        # Auto-generate mappings from inputSchema extended fields (mapTo, aliases, default, wrapArray)
+        params_cfg = dict(row.paramsConfig) if row.paramsConfig else None
+        body_cfg = dict(row.bodyConfig) if row.bodyConfig else None
+        is_body_method = row.method in ("POST", "PUT", "PATCH")
+
+        if enriched_input_schema:
+            auto_mappings = self._extract_input_mappings(
+                enriched_input_schema, row.endpoint, params_cfg, body_cfg,
+            )
+            if auto_mappings:
+                if is_body_method:
+                    if body_cfg is None:
+                        body_cfg = {}
+                    body_cfg["mappings"] = body_cfg.get("mappings", []) + auto_mappings
+                else:
+                    if params_cfg is None:
+                        params_cfg = {}
+                    params_cfg["mappings"] = params_cfg.get("mappings", []) + auto_mappings
+
+        config.params_builder = overrides.get("params_builder") or self._build_params_builder(params_cfg, row.outputSchema)
+        config.body_builder = overrides.get("body_builder") or self._build_body_builder(body_cfg)
         config.headers_builder = overrides.get("headers_builder") or self._build_headers_builder(row.headersConfig)
         config.response_mapper = overrides.get("response_mapper") or self._build_response_mapper(row.responseConfig)
         config.post_processor = overrides.get("post_processor") or self._build_post_processor(row.postProcessConfig)
 
         return config
+
+    def _enrich_input_schema(
+        self, input_schema: dict | None, params_cfg: dict | None,
+        body_cfg: dict | None, endpoint: str,
+    ) -> dict | None:
+        """Auto-enrich inputSchema with fields from queryBuilder/bodyTemplate
+        so the LLM planner knows about dynamically added parameters."""
+        referenced: set[str] = set()
+        if params_cfg and params_cfg.get("queryBuilder"):
+            for part in params_cfg["queryBuilder"].get("parts", []):
+                if part.get("when"):
+                    referenced.add(part["when"])
+        if body_cfg and body_cfg.get("template"):
+            for v in body_cfg["template"].values():
+                if isinstance(v, str):
+                    referenced.update(re.findall(r"\{\{(\w+)\}\}", v))
+        if not referenced:
+            return input_schema
+
+        path_params = set(re.findall(r"\{\{(\w+)\}\}", endpoint))
+        schema = json.loads(json.dumps(input_schema)) if input_schema else {"type": "object", "properties": {}}
+        if "properties" not in schema:
+            schema["properties"] = {}
+
+        for field in referenced:
+            if field in path_params:
+                continue
+            if field in schema["properties"]:
+                continue
+            # Auto-generate a property for this field
+            label = re.sub(r"([A-Z])", r" \1", field).lower().strip()
+            schema["properties"][field] = {
+                "type": "string",
+                "description": f"Filter by {label}",
+            }
+        return schema
+
+    def _extract_input_mappings(
+        self, input_schema: dict, endpoint: str,
+        params_cfg: dict | None, body_cfg: dict | None,
+    ) -> list[dict]:
+        """Extract auto-mappings from inputSchema properties with extended fields."""
+        props = (input_schema or {}).get("properties")
+        if not props:
+            return []
+
+        # Collect fields handled elsewhere
+        path_params = set(re.findall(r"\{\{(\w+)\}\}", endpoint))
+        qb_fields = set()
+        if params_cfg and params_cfg.get("queryBuilder"):
+            for part in params_cfg["queryBuilder"].get("parts", []):
+                if part.get("when"):
+                    qb_fields.add(part["when"])
+        template_fields = set()
+        if body_cfg and body_cfg.get("template"):
+            for v in body_cfg["template"].values():
+                if isinstance(v, str):
+                    template_fields.update(re.findall(r"\{\{(\w+)\}\}", v))
+        explicit_froms = set()
+        for m in (params_cfg or {}).get("mappings", []):
+            explicit_froms.add(m["from"])
+        for m in (body_cfg or {}).get("mappings", []):
+            explicit_froms.add(m["from"])
+
+        mappings = []
+        for key, prop in props.items():
+            if key in path_params or key in qb_fields or key in template_fields or key in explicit_froms:
+                continue
+            if not isinstance(prop, dict):
+                continue
+            map_to = prop.get("mapTo")
+            aliases = prop.get("aliases")
+            default = prop.get("default")
+            wrap_array = prop.get("wrapArray")
+            # Only auto-map if property has mapping metadata
+            if not map_to and not aliases and default is None and not wrap_array:
+                continue
+            m: dict[str, Any] = {"from": key, "to": map_to or key}
+            if aliases:
+                m["aliases"] = aliases
+            if default is not None:
+                m["default"] = default
+            if wrap_array:
+                m["wrapArray"] = True
+            mappings.append(m)
+        return mappings
 
     def _build_params_builder(self, cfg: Any, output_schema: Any = None) -> ParamsBuilder | None:
         if not cfg:

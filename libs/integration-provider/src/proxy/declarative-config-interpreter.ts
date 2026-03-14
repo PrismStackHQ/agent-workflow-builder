@@ -10,7 +10,8 @@ export interface ParamMapping {
   from: string;
   to: string;
   aliases?: string[];
-  default?: string;
+  default?: unknown;
+  wrapArray?: boolean;
 }
 
 export interface QueryBuilderPart {
@@ -117,6 +118,15 @@ export class DeclarativeConfigInterpreter {
       }
     }
 
+    // Auto-enrich inputSchema with fields from queryBuilder/bodyTemplate
+    // so the LLM planner knows about dynamically added parameters
+    const enrichedInputSchema = this.enrichInputSchema(
+      def.inputSchema as Record<string, unknown> | null,
+      def.paramsConfig as ParamsConfig | null,
+      def.bodyConfig as BodyConfig | null,
+      def.endpoint,
+    );
+
     const config: ProxyActionConfig = {
       providerConfigKey: def.providerConfigKey,
       actionName: def.actionName,
@@ -125,18 +135,49 @@ export class DeclarativeConfigInterpreter {
       description: def.description || '',
       method: def.method as HttpMethod,
       endpoint: def.endpoint,
-      inputSchema: (def.inputSchema as Record<string, unknown>) || undefined,
+      inputSchema: enrichedInputSchema || undefined,
       outputSchema: (def.outputSchema as Record<string, unknown>) || undefined,
     };
+
+    // Auto-generate mappings from inputSchema extended fields (mapTo, aliases, default, wrapArray)
+    const inputSchema = enrichedInputSchema;
+    const outputSchema = def.outputSchema as Record<string, unknown> | null;
+    const isBodyMethod = ['POST', 'PUT', 'PATCH'].includes(def.method);
+
+    let effectiveParamsConfig: ParamsConfig | null = def.paramsConfig
+      ? { ...(def.paramsConfig as ParamsConfig) }
+      : null;
+    let effectiveBodyConfig: BodyConfig | null = def.bodyConfig
+      ? { ...(def.bodyConfig as BodyConfig) }
+      : null;
+
+    if (inputSchema) {
+      const autoMappings = this.extractInputMappings(
+        inputSchema,
+        def.endpoint,
+        effectiveParamsConfig,
+        effectiveBodyConfig,
+      );
+
+      if (autoMappings.length > 0) {
+        if (isBodyMethod) {
+          if (!effectiveBodyConfig) effectiveBodyConfig = {};
+          effectiveBodyConfig.mappings = [...(effectiveBodyConfig.mappings || []), ...autoMappings];
+        } else {
+          if (!effectiveParamsConfig) effectiveParamsConfig = {};
+          effectiveParamsConfig.mappings = [...(effectiveParamsConfig.mappings || []), ...autoMappings];
+        }
+      }
+    }
 
     // Transformer overrides take precedence over declarative config
     config.paramsBuilder =
       transformerOverrides.paramsBuilder ||
-      this.buildParamsBuilder(def.paramsConfig as ParamsConfig | null, def.outputSchema as Record<string, unknown> | null);
+      this.buildParamsBuilder(effectiveParamsConfig, outputSchema);
 
     config.bodyBuilder =
       transformerOverrides.bodyBuilder ||
-      this.buildBodyBuilder(def.bodyConfig as BodyConfig | null);
+      this.buildBodyBuilder(effectiveBodyConfig);
 
     config.headersBuilder =
       transformerOverrides.headersBuilder ||
@@ -194,7 +235,7 @@ export class DeclarativeConfigInterpreter {
           if (value !== undefined) {
             result[mapping.to] = value;
           } else if (mapping.default !== undefined) {
-            result[mapping.to] = mapping.default;
+            result[mapping.to] = String(mapping.default);
           }
         }
       }
@@ -233,6 +274,130 @@ export class DeclarativeConfigInterpreter {
     return props ? Object.keys(props) : [];
   }
 
+  /**
+   * Auto-enrich inputSchema with fields referenced by queryBuilder parts
+   * or bodyConfig templates that aren't already defined. This ensures the
+   * LLM planner knows about dynamically added parameters (e.g., new
+   * queryBuilder parts added via the UI).
+   */
+  private enrichInputSchema(
+    inputSchema: Record<string, unknown> | null,
+    paramsConfig: ParamsConfig | null,
+    bodyConfig: BodyConfig | null,
+    endpoint: string,
+  ): Record<string, unknown> | null {
+    // Collect all fields referenced in configs
+    const referencedFields = new Set<string>();
+
+    // From queryBuilder 'when' fields
+    if (paramsConfig?.queryBuilder?.parts) {
+      for (const part of paramsConfig.queryBuilder.parts) {
+        if (part.when) referencedFields.add(part.when);
+      }
+    }
+
+    // From bodyConfig template {{key}} placeholders
+    if (bodyConfig?.template) {
+      for (const value of Object.values(bodyConfig.template)) {
+        if (typeof value === 'string') {
+          for (const m of value.matchAll(/\{\{(\w+)\}\}/g)) {
+            referencedFields.add(m[1]);
+          }
+        }
+      }
+    }
+
+    if (referencedFields.size === 0) return inputSchema;
+
+    // Path params shouldn't be added to inputSchema (already handled)
+    const pathParams = new Set(
+      [...endpoint.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]),
+    );
+
+    const schema = inputSchema
+      ? JSON.parse(JSON.stringify(inputSchema))
+      : { type: 'object', properties: {} };
+    if (!schema.properties) schema.properties = {};
+
+    for (const field of referencedFields) {
+      if (pathParams.has(field)) continue;
+      if (schema.properties[field]) continue; // already defined
+      schema.properties[field] = {
+        type: 'string',
+        description: `Filter by ${field.replace(/([A-Z])/g, ' $1').toLowerCase().trim()}`,
+      };
+    }
+
+    return schema;
+  }
+
+  /**
+   * Auto-generate ParamMappings from inputSchema properties that have
+   * extended fields (mapTo, aliases, default, wrapArray).
+   * Excludes path params ({{key}} in endpoint) and queryBuilder inputs.
+   */
+  private extractInputMappings(
+    inputSchema: Record<string, unknown>,
+    endpoint: string,
+    paramsConfig: ParamsConfig | null,
+    bodyConfig: BodyConfig | null,
+  ): ParamMapping[] {
+    const props = inputSchema.properties as Record<string, Record<string, unknown>> | undefined;
+    if (!props) return [];
+
+    // Collect fields that are already handled elsewhere
+    const pathParams = new Set(
+      [...endpoint.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]),
+    );
+    const queryBuilderFields = new Set<string>();
+    if (paramsConfig?.queryBuilder?.parts) {
+      for (const part of paramsConfig.queryBuilder.parts) {
+        if (part.when) queryBuilderFields.add(part.when);
+      }
+    }
+    const templateFields = new Set<string>();
+    if (bodyConfig?.template) {
+      for (const value of Object.values(bodyConfig.template)) {
+        if (typeof value === 'string') {
+          for (const m of value.matchAll(/\{\{(\w+)\}\}/g)) {
+            templateFields.add(m[1]);
+          }
+        }
+      }
+    }
+    const explicitFroms = new Set<string>();
+    for (const m of paramsConfig?.mappings || []) explicitFroms.add(m.from);
+    for (const m of bodyConfig?.mappings || []) explicitFroms.add(m.from);
+
+    const mappings: ParamMapping[] = [];
+    for (const [key, prop] of Object.entries(props)) {
+      if (pathParams.has(key)) continue;
+      if (queryBuilderFields.has(key)) continue;
+      if (templateFields.has(key)) continue;
+      if (explicitFroms.has(key)) continue;
+
+      // Only auto-map if the property has mapping metadata OR is a simple passthrough
+      const mapTo = prop.mapTo as string | undefined;
+      const aliases = prop.aliases as string[] | undefined;
+      const defaultVal = prop.default;
+      const wrapArray = prop.wrapArray as boolean | undefined;
+
+      // Skip properties with no mapping metadata that would just passthrough
+      // (avoid sending LLM-only descriptive fields as API params)
+      if (!mapTo && !aliases && defaultVal === undefined && !wrapArray) continue;
+
+      mappings.push({
+        from: key,
+        to: mapTo || key,
+        aliases,
+        default: defaultVal,
+        wrapArray,
+      });
+    }
+
+    return mappings;
+  }
+
   private buildBodyBuilder(
     config: BodyConfig | null,
   ): ProxyActionConfig['bodyBuilder'] | undefined {
@@ -268,7 +433,7 @@ export class DeclarativeConfigInterpreter {
           for (const key of allKeys) {
             if (input[key] !== undefined && input[key] !== null) {
               let val = input[key];
-              if ((mapping as any).wrapArray && !Array.isArray(val)) {
+              if (mapping.wrapArray && !Array.isArray(val)) {
                 val = [val];
               }
               result[mapping.to] = val;
@@ -276,8 +441,8 @@ export class DeclarativeConfigInterpreter {
               break;
             }
           }
-          if (!found && (mapping as any).default !== undefined) {
-            result[mapping.to] = (mapping as any).default;
+          if (!found && mapping.default !== undefined) {
+            result[mapping.to] = mapping.default;
           }
         }
       }

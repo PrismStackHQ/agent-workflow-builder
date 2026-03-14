@@ -46,9 +46,6 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       endpoint: '/drive/v3/files',
       paramsConfig: {
         fieldsParam: { paramName: 'fields', wrapper: 'files' },
-        mappings: [
-          { from: 'maxResults', to: 'pageSize', default: '10', aliases: ['limit'] },
-        ],
         queryBuilder: {
           target: 'q',
           join: ' and ',
@@ -67,7 +64,7 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
           query: { type: 'string', description: 'Search query text (file name or keyword)' },
           fileName: { type: 'string', description: 'File name to search for (alias for query)' },
           mimeType: { type: 'string', description: 'MIME type filter' },
-          maxResults: { type: 'number', description: 'Maximum results (default: 10)' },
+          maxResults: { type: 'number', description: 'Maximum results (default: 10)', mapTo: 'pageSize', default: '10', aliases: ['limit'] },
         },
       },
       outputSchema: {
@@ -137,18 +134,14 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       endpoint: '/drive/v3/files',
       bodyConfig: {
         defaults: { mimeType: 'application/vnd.google-apps.folder' },
-        mappings: [
-          { from: 'folderName', to: 'name', aliases: ['name'] },
-          { from: 'parentId', to: 'parents', wrapArray: true },
-        ],
       },
       responseConfig: { pick: ['id', 'name', 'mimeType'] },
       inputSchema: {
         type: 'object',
         required: ['folderName'],
         properties: {
-          folderName: { type: 'string', description: 'Name for the new folder' },
-          parentId: { type: 'string', description: 'Parent folder ID (optional, defaults to root)' },
+          folderName: { type: 'string', description: 'Name for the new folder', mapTo: 'name', aliases: ['name'] },
+          parentId: { type: 'string', description: 'Parent folder ID (optional, defaults to root)', mapTo: 'parents', wrapArray: true },
         },
       },
       outputSchema: {
@@ -167,24 +160,15 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Create a file entry in Google Drive with optional text content saved as description',
       method: 'POST',
       endpoint: '/drive/v3/files',
-      bodyConfig: {
-        mappings: [
-          { from: 'fileName', to: 'name', aliases: ['name'] },
-          { from: 'folderId', to: 'parents', wrapArray: true },
-          { from: 'mimeType', to: 'mimeType' },
-          { from: 'description', to: 'description', aliases: ['content'] },
-        ],
-      },
       responseConfig: { pick: ['id', 'name', 'mimeType', 'webViewLink'] },
       inputSchema: {
         type: 'object',
         required: ['fileName'],
         properties: {
-          fileName: { type: 'string', description: 'Name for the file' },
-          folderId: { type: 'string', description: 'Destination folder ID (from create_folder result)' },
-          mimeType: { type: 'string', description: 'MIME type of the file' },
-          content: { type: 'string', description: 'Text content to save as the file description' },
-          description: { type: 'string', description: 'File description (alias for content)' },
+          fileName: { type: 'string', description: 'Name for the file', mapTo: 'name', aliases: ['name'] },
+          folderId: { type: 'string', description: 'Destination folder ID (from create_folder result)', mapTo: 'parents', wrapArray: true },
+          mimeType: { type: 'string', description: 'MIME type of the file', mapTo: 'mimeType' },
+          description: { type: 'string', description: 'Text content to save as the file description', aliases: ['content'] },
         },
       },
       outputSchema: {
@@ -210,10 +194,6 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       endpoint: '/gmail/v1/users/me/messages',
       transformerName: 'gmail_search_enricher',
       paramsConfig: {
-        mappings: [
-          { from: 'maxResults', to: 'maxResults', default: '10', aliases: ['limit'] },
-          { from: 'labelIds', to: 'labelIds' },
-        ],
         queryBuilder: {
           target: 'q',
           join: ' ',
@@ -233,8 +213,8 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
           keyword: { type: 'string', description: 'Search keyword (alias for query)' },
           from: { type: 'string', description: 'Filter by sender email address' },
           to: { type: 'string', description: 'Filter by recipient email address' },
-          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)' },
-          labelIds: { type: 'string', description: 'Comma-separated label IDs to filter by' },
+          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)', default: '10', aliases: ['limit'] },
+          labelIds: { type: 'string', description: 'Comma-separated label IDs to filter by', mapTo: 'labelIds' },
         },
       },
       outputSchema: {
@@ -261,16 +241,11 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
       transformerName: 'gmail_list_enricher',
-      paramsConfig: {
-        mappings: [
-          { from: 'maxResults', to: 'maxResults', default: '10', aliases: ['limit'] },
-        ],
-      },
       responseConfig: { rootPath: 'messages' },
       inputSchema: {
         type: 'object',
         properties: {
-          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)' },
+          maxResults: { type: 'number', description: 'Maximum number of results (default: 10)', default: '10', aliases: ['limit'] },
         },
       },
     },
@@ -378,19 +353,13 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Send a message to a Slack channel',
       method: 'POST',
       endpoint: '/chat.postMessage',
-      bodyConfig: {
-        template: { channel: '{{channel}}', text: '{{text}}' },
-        mappings: [
-          { from: 'blocks', to: 'blocks' },
-        ],
-      },
       inputSchema: {
         type: 'object',
         required: ['channel', 'text'],
         properties: {
-          channel: { type: 'string', description: 'Channel ID or name' },
-          text: { type: 'string', description: 'Message text' },
-          blocks: { type: 'array', description: 'Block Kit blocks for rich messages' },
+          channel: { type: 'string', description: 'Channel ID or name', mapTo: 'channel' },
+          text: { type: 'string', description: 'Message text', mapTo: 'text' },
+          blocks: { type: 'array', description: 'Block Kit blocks for rich messages', mapTo: 'blocks' },
         },
       },
     },
@@ -403,15 +372,12 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       endpoint: '/conversations.list',
       paramsConfig: {
         defaults: { types: 'public_channel,private_channel' },
-        mappings: [
-          { from: 'limit', to: 'limit', default: '10', aliases: ['maxResults'] },
-        ],
       },
       responseConfig: { rootPath: 'channels' },
       inputSchema: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Maximum number of channels to return' },
+          limit: { type: 'number', description: 'Maximum number of channels to return', default: '10', aliases: ['maxResults'] },
         },
       },
     },
@@ -427,21 +393,14 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       method: 'POST',
       endpoint: '/v1/search',
       headersConfig: { static: { 'Notion-Version': '2022-06-28' } },
-      bodyConfig: {
-        mappings: [
-          { from: 'query', to: 'query', aliases: ['q', 'search', 'keyword'] },
-          { from: 'filter', to: 'filter' },
-          { from: 'sort', to: 'sort' },
-          { from: 'limit', to: 'page_size', default: 10, aliases: ['maxResults'] },
-        ],
-      },
       responseConfig: { rootPath: 'results' },
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Search query text' },
-          filter: { type: 'object', description: 'Filter by object type (page or database)' },
-          sort: { type: 'object', description: 'Sort order for results' },
+          query: { type: 'string', description: 'Search query text', aliases: ['q', 'search', 'keyword'] },
+          filter: { type: 'object', description: 'Filter by object type (page or database)', mapTo: 'filter' },
+          sort: { type: 'object', description: 'Sort order for results', mapTo: 'sort' },
+          limit: { type: 'number', description: 'Max results per page', mapTo: 'page_size', default: 10, aliases: ['maxResults'] },
         },
       },
     },
@@ -472,19 +431,12 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'List repositories for the authenticated user',
       method: 'GET',
       endpoint: '/user/repos',
-      paramsConfig: {
-        mappings: [
-          { from: 'per_page', to: 'per_page', default: '10', aliases: ['limit', 'maxResults'] },
-          { from: 'sort', to: 'sort' },
-          { from: 'type', to: 'type' },
-        ],
-      },
       inputSchema: {
         type: 'object',
         properties: {
-          sort: { type: 'string', description: 'Sort by: created, updated, pushed, full_name' },
-          per_page: { type: 'number', description: 'Results per page (max 100)' },
-          type: { type: 'string', description: 'Filter by type: all, owner, public, private, member' },
+          sort: { type: 'string', description: 'Sort by: created, updated, pushed, full_name', mapTo: 'sort' },
+          per_page: { type: 'number', description: 'Results per page (max 100)', default: '10', aliases: ['limit', 'maxResults'] },
+          type: { type: 'string', description: 'Filter by type: all, owner, public, private, member', mapTo: 'type' },
         },
       },
     },
@@ -495,21 +447,14 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Search for issues and pull requests across GitHub repositories',
       method: 'GET',
       endpoint: '/search/issues',
-      paramsConfig: {
-        mappings: [
-          { from: 'query', to: 'q', aliases: ['q', 'search', 'keyword'] },
-          { from: 'per_page', to: 'per_page', default: '10', aliases: ['limit', 'maxResults'] },
-          { from: 'sort', to: 'sort' },
-        ],
-      },
       responseConfig: { rootPath: 'items' },
       inputSchema: {
         type: 'object',
         required: ['query'],
         properties: {
-          query: { type: 'string', description: 'GitHub search query (e.g., "repo:owner/name is:open label:bug")' },
-          sort: { type: 'string', description: 'Sort by: comments, reactions, created, updated' },
-          per_page: { type: 'number', description: 'Results per page (max 100)' },
+          query: { type: 'string', description: 'GitHub search query (e.g., "repo:owner/name is:open label:bug")', mapTo: 'q', aliases: ['q', 'search', 'keyword'] },
+          sort: { type: 'string', description: 'Sort by: comments, reactions, created, updated', mapTo: 'sort' },
+          per_page: { type: 'number', description: 'Results per page (max 100)', default: '10', aliases: ['limit', 'maxResults'] },
         },
       },
     },
@@ -570,16 +515,13 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       method: 'GET',
       endpoint: '/calendar/v3/calendars/primary/events',
       paramsConfig: {
-        defaults: { maxResults: '10', orderBy: 'startTime', singleEvents: 'true' },
-        mappings: [
-          { from: 'maxResults', to: 'maxResults', aliases: ['limit'] },
-        ],
+        defaults: { orderBy: 'startTime', singleEvents: 'true' },
       },
       responseConfig: { rootPath: 'items' },
       inputSchema: {
         type: 'object',
         properties: {
-          maxResults: { type: 'number', description: 'Max events to return (default: 10)' },
+          maxResults: { type: 'number', description: 'Max events to return (default: 10)', default: '10', aliases: ['limit'] },
         },
       },
     },
