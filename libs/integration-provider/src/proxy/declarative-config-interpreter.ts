@@ -19,6 +19,11 @@ export interface QueryBuilderPart {
   literal?: string;  // always included
 }
 
+export interface FieldsParam {
+  paramName: string;      // query param name (e.g. "fields")
+  wrapper?: string;       // optional wrapper (e.g. "files" → "files(f1,f2,...)")
+}
+
 export interface ParamsConfig {
   mappings?: ParamMapping[];
   defaults?: Record<string, string>;
@@ -27,6 +32,7 @@ export interface ParamsConfig {
     parts: QueryBuilderPart[];
     join: string;         // e.g. " and "
   };
+  fieldsParam?: FieldsParam; // auto-derive API fields param from outputSchema
 }
 
 export interface BodyConfig {
@@ -126,7 +132,7 @@ export class DeclarativeConfigInterpreter {
     // Transformer overrides take precedence over declarative config
     config.paramsBuilder =
       transformerOverrides.paramsBuilder ||
-      this.buildParamsBuilder(def.paramsConfig as ParamsConfig | null);
+      this.buildParamsBuilder(def.paramsConfig as ParamsConfig | null, def.outputSchema as Record<string, unknown> | null);
 
     config.bodyBuilder =
       transformerOverrides.bodyBuilder ||
@@ -149,6 +155,7 @@ export class DeclarativeConfigInterpreter {
 
   private buildParamsBuilder(
     config: ParamsConfig | null,
+    outputSchema?: Record<string, unknown> | null,
   ): ProxyActionConfig['paramsBuilder'] | undefined {
     if (!config) return undefined;
 
@@ -158,6 +165,17 @@ export class DeclarativeConfigInterpreter {
       // Apply defaults first
       if (config.defaults) {
         Object.assign(result, config.defaults);
+      }
+
+      // Auto-derive fields param from outputSchema
+      if (config.fieldsParam && outputSchema) {
+        const fieldNames = this.extractSchemaFieldNames(outputSchema);
+        if (fieldNames.length > 0) {
+          const sorted = fieldNames.sort().join(',');
+          result[config.fieldsParam.paramName] = config.fieldsParam.wrapper
+            ? `${config.fieldsParam.wrapper}(${sorted})`
+            : sorted;
+        }
       }
 
       // Apply mappings
@@ -205,6 +223,16 @@ export class DeclarativeConfigInterpreter {
     };
   }
 
+  private extractSchemaFieldNames(schema: Record<string, unknown>): string[] {
+    let props: Record<string, unknown> | undefined;
+    if (schema.type === 'array') {
+      props = ((schema.items as Record<string, unknown>) || {}).properties as Record<string, unknown>;
+    } else {
+      props = schema.properties as Record<string, unknown>;
+    }
+    return props ? Object.keys(props) : [];
+  }
+
   private buildBodyBuilder(
     config: BodyConfig | null,
   ): ProxyActionConfig['bodyBuilder'] | undefined {
@@ -236,11 +264,20 @@ export class DeclarativeConfigInterpreter {
       if (config.mappings) {
         for (const mapping of config.mappings) {
           const allKeys = [mapping.from, ...(mapping.aliases || [])];
+          let found = false;
           for (const key of allKeys) {
             if (input[key] !== undefined && input[key] !== null) {
-              result[mapping.to] = input[key];
+              let val = input[key];
+              if ((mapping as any).wrapArray && !Array.isArray(val)) {
+                val = [val];
+              }
+              result[mapping.to] = val;
+              found = true;
               break;
             }
+          }
+          if (!found && (mapping as any).default !== undefined) {
+            result[mapping.to] = (mapping as any).default;
           }
         }
       }

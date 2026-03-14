@@ -54,6 +54,60 @@ class ProxyActionConfig:
     post_processor: PostProcessor | None = None
 
 
+# ── Output Schema Filter ──────────────────────────────────────────────────────
+
+
+def _extract_schema_field_names(schema: dict) -> set[str]:
+    """Extract top-level property names from a JSON Schema (object or array of objects)."""
+    props = None
+    if schema.get("type") == "array":
+        props = (schema.get("items") or {}).get("properties")
+    elif schema.get("type") == "object":
+        props = schema.get("properties")
+    else:
+        props = schema.get("properties")
+    return set(props.keys()) if props else set()
+
+
+def _filter_by_output_schema(data: Any, schema: dict) -> Any:
+    """Filter response data to only include fields defined in outputSchema."""
+    schema_type = schema.get("type")
+
+    if schema_type == "array":
+        props = (schema.get("items") or {}).get("properties")
+        if props and isinstance(data, list):
+            keys = set(props.keys())
+            return [
+                {k: v for k, v in item.items() if k in keys}
+                for item in data
+                if isinstance(item, dict)
+            ]
+        return data
+
+    if schema_type == "object":
+        props = schema.get("properties")
+        if props and isinstance(data, dict):
+            keys = set(props.keys())
+            return {k: v for k, v in data.items() if k in keys}
+        return data
+
+    # If schema has properties at top level without explicit type
+    props = schema.get("properties")
+    if props:
+        if isinstance(data, dict):
+            keys = set(props.keys())
+            return {k: v for k, v in data.items() if k in keys}
+        if isinstance(data, list):
+            keys = set(props.keys())
+            return [
+                {k: v for k, v in item.items() if k in keys}
+                for item in data
+                if isinstance(item, dict)
+            ]
+
+    return data
+
+
 # ── Built-in Transformers ──────────────────────────────────────────────────────
 
 
@@ -319,7 +373,7 @@ class DeclarativeConfigInterpreter:
             output_schema=row.outputSchema,
         )
 
-        config.params_builder = overrides.get("params_builder") or self._build_params_builder(row.paramsConfig)
+        config.params_builder = overrides.get("params_builder") or self._build_params_builder(row.paramsConfig, row.outputSchema)
         config.body_builder = overrides.get("body_builder") or self._build_body_builder(row.bodyConfig)
         config.headers_builder = overrides.get("headers_builder") or self._build_headers_builder(row.headersConfig)
         config.response_mapper = overrides.get("response_mapper") or self._build_response_mapper(row.responseConfig)
@@ -327,7 +381,7 @@ class DeclarativeConfigInterpreter:
 
         return config
 
-    def _build_params_builder(self, cfg: Any) -> ParamsBuilder | None:
+    def _build_params_builder(self, cfg: Any, output_schema: Any = None) -> ParamsBuilder | None:
         if not cfg:
             return None
 
@@ -335,6 +389,14 @@ class DeclarativeConfigInterpreter:
             result: dict[str, str] = {}
             if cfg.get("defaults"):
                 result.update(cfg["defaults"])
+            # Auto-derive fields param from outputSchema
+            fp = cfg.get("fieldsParam")
+            if fp and output_schema:
+                field_names = _extract_schema_field_names(output_schema)
+                if field_names:
+                    sorted_fields = ",".join(sorted(field_names))
+                    wrapper = fp.get("wrapper")
+                    result[fp["paramName"]] = f"{wrapper}({sorted_fields})" if wrapper else sorted_fields
             for m in cfg.get("mappings", []):
                 all_keys = [m["from"]] + m.get("aliases", [])
                 val = None
@@ -381,10 +443,17 @@ class DeclarativeConfigInterpreter:
                         result[k] = v
             for m in cfg.get("mappings", []):
                 all_keys = [m["from"]] + m.get("aliases", [])
+                found = False
                 for k in all_keys:
                     if inp.get(k) is not None:
-                        result[m["to"]] = inp[k]
+                        val = inp[k]
+                        if m.get("wrapArray") and not isinstance(val, list):
+                            val = [val]
+                        result[m["to"]] = val
+                        found = True
                         break
+                if not found and m.get("default") is not None:
+                    result[m["to"]] = m["default"]
             return result
 
         return builder
@@ -614,6 +683,7 @@ class NangoClient:
 
         # Query params
         query_params = config.params_builder(inp) if config.params_builder else {}
+
         qs = urlencode(query_params) if query_params else ""
         full_url = f"{nango_base}/proxy{endpoint}?{qs}" if qs else f"{nango_base}/proxy{endpoint}"
 
@@ -658,6 +728,10 @@ class NangoClient:
                 return r.json()
 
             mapped = await config.post_processor(mapped, proxy_fetch)
+
+        # Filter output by outputSchema properties (if defined)
+        if config.output_schema:
+            mapped = _filter_by_output_schema(mapped, config.output_schema)
 
         return {"success": True, "data": mapped, "statusCode": resp.status_code}
 

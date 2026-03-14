@@ -44,7 +44,22 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Search for files in Google Drive by name or query',
       method: 'GET',
       endpoint: '/drive/v3/files',
-      transformerName: 'drive_search_params',
+      paramsConfig: {
+        fieldsParam: { paramName: 'fields', wrapper: 'files' },
+        mappings: [
+          { from: 'maxResults', to: 'pageSize', default: '10', aliases: ['limit'] },
+        ],
+        queryBuilder: {
+          target: 'q',
+          join: ' and ',
+          parts: [
+            { template: "name contains '{{query}}'", when: 'query' },
+            { template: "name contains '{{fileName}}'", when: 'fileName' },
+            { template: "mimeType='{{mimeType}}'", when: 'mimeType' },
+            { literal: 'trashed=false' },
+          ],
+        },
+      },
       responseConfig: { rootPath: 'files' },
       inputSchema: {
         type: 'object',
@@ -76,13 +91,24 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       method: 'GET',
       endpoint: '/drive/v3/files/{{fileId}}',
       paramsConfig: {
-        defaults: { fields: 'id,name,mimeType,modifiedTime,size,webViewLink' },
+        fieldsParam: { paramName: 'fields' },
       },
       inputSchema: {
         type: 'object',
         required: ['fileId'],
         properties: {
           fileId: { type: 'string', description: 'The ID of the file' },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          mimeType: { type: 'string' },
+          modifiedTime: { type: 'string' },
+          size: { type: 'string' },
+          webViewLink: { type: 'string' },
         },
       },
     },
@@ -109,7 +135,13 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Create a new folder in Google Drive',
       method: 'POST',
       endpoint: '/drive/v3/files',
-      transformerName: 'drive_create_folder_body',
+      bodyConfig: {
+        defaults: { mimeType: 'application/vnd.google-apps.folder' },
+        mappings: [
+          { from: 'folderName', to: 'name', aliases: ['name'] },
+          { from: 'parentId', to: 'parents', wrapArray: true },
+        ],
+      },
       responseConfig: { pick: ['id', 'name', 'mimeType'] },
       inputSchema: {
         type: 'object',
@@ -135,7 +167,14 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Create a file entry in Google Drive with optional text content saved as description',
       method: 'POST',
       endpoint: '/drive/v3/files',
-      transformerName: 'drive_upload_file_body',
+      bodyConfig: {
+        mappings: [
+          { from: 'fileName', to: 'name', aliases: ['name'] },
+          { from: 'folderId', to: 'parents', wrapArray: true },
+          { from: 'mimeType', to: 'mimeType' },
+          { from: 'description', to: 'description', aliases: ['content'] },
+        ],
+      },
       responseConfig: { pick: ['id', 'name', 'mimeType', 'webViewLink'] },
       inputSchema: {
         type: 'object',
@@ -169,7 +208,23 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Search for emails in Gmail using query syntax (subject, from, label, etc.)',
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
-      transformerName: 'gmail_search_params+gmail_search_enricher',
+      transformerName: 'gmail_search_enricher',
+      paramsConfig: {
+        mappings: [
+          { from: 'maxResults', to: 'maxResults', default: '10', aliases: ['limit'] },
+          { from: 'labelIds', to: 'labelIds' },
+        ],
+        queryBuilder: {
+          target: 'q',
+          join: ' ',
+          parts: [
+            { template: '{{query}}', when: 'query' },
+            { template: '{{keyword}}', when: 'keyword' },
+            { template: 'from:{{from}}', when: 'from' },
+            { template: 'to:{{to}}', when: 'to' },
+          ],
+        },
+      },
       responseConfig: { rootPath: 'messages' },
       inputSchema: {
         type: 'object',
@@ -205,7 +260,12 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'List recent emails from the inbox',
       method: 'GET',
       endpoint: '/gmail/v1/users/me/messages',
-      transformerName: 'gmail_list_params+gmail_list_enricher',
+      transformerName: 'gmail_list_enricher',
+      paramsConfig: {
+        mappings: [
+          { from: 'maxResults', to: 'maxResults', default: '10', aliases: ['limit'] },
+        ],
+      },
       responseConfig: { rootPath: 'messages' },
       inputSchema: {
         type: 'object',
@@ -318,7 +378,12 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       description: 'Send a message to a Slack channel',
       method: 'POST',
       endpoint: '/chat.postMessage',
-      transformerName: 'slack_post_message_body',
+      bodyConfig: {
+        template: { channel: '{{channel}}', text: '{{text}}' },
+        mappings: [
+          { from: 'blocks', to: 'blocks' },
+        ],
+      },
       inputSchema: {
         type: 'object',
         required: ['channel', 'text'],
@@ -362,7 +427,14 @@ export const PROXY_ACTION_TEMPLATES: Record<string, ProxyActionTemplate[]> = {
       method: 'POST',
       endpoint: '/v1/search',
       headersConfig: { static: { 'Notion-Version': '2022-06-28' } },
-      transformerName: 'notion_search_body',
+      bodyConfig: {
+        mappings: [
+          { from: 'query', to: 'query', aliases: ['q', 'search', 'keyword'] },
+          { from: 'filter', to: 'filter' },
+          { from: 'sort', to: 'sort' },
+          { from: 'limit', to: 'page_size', default: 10, aliases: ['maxResults'] },
+        ],
+      },
       responseConfig: { rootPath: 'results' },
       inputSchema: {
         type: 'object',
