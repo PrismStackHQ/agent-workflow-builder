@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { apiClient } from '@/lib/api-client';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +10,7 @@ export default function AgentsListPage() {
   const [agents, setAgents] = useState<any[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [runs, setRuns] = useState<any[]>([]);
+  const [resuming, setResuming] = useState<string | null>(null);
   const apiKey = typeof window !== 'undefined' ? localStorage.getItem('apiKey') : null;
   const { connected, lastMessage } = useWebSocket(apiKey);
 
@@ -21,9 +21,15 @@ export default function AgentsListPage() {
   useEffect(() => {
     if (!lastMessage) return;
     if (
-      ['agent_created', 'agent_scheduled', 'agent_run_started', 'agent_run_succeeded', 'agent_run_failed'].includes(
-        lastMessage.type,
-      )
+      [
+        'agent_created',
+        'agent_scheduled',
+        'agent_run_started',
+        'agent_run_succeeded',
+        'agent_run_failed',
+        'agent_run_paused',
+        'agent_run_resumed',
+      ].includes(lastMessage.type)
     ) {
       loadAgents();
       if (selectedAgent) loadRuns(selectedAgent);
@@ -59,6 +65,17 @@ export default function AgentsListPage() {
     }
   };
 
+  const handleResume = async (run: any) => {
+    setResuming(run.id);
+    try {
+      await apiClient.resumeRun(run.agentId, run.id, run.endUserConnectionId || '');
+    } catch {
+      // Will be updated via WebSocket
+    } finally {
+      setResuming(null);
+    }
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'SCHEDULED': return 'bg-green-100 text-green-700';
@@ -67,21 +84,27 @@ export default function AgentsListPage() {
       case 'DRAFT': return 'bg-gray-100 text-gray-700';
       case 'SUCCEEDED': return 'bg-green-100 text-green-700';
       case 'RUNNING': return 'bg-blue-100 text-blue-700';
+      case 'PAUSED': return 'bg-amber-100 text-amber-700';
       case 'FAILED': return 'bg-red-100 text-red-700';
       default: return 'bg-gray-100 text-gray-700';
     }
   };
 
+  const parsePauseReason = (reason: string | null) => {
+    if (!reason) return null;
+    if (reason.startsWith('connection_required:')) {
+      return reason.replace('connection_required:', '');
+    }
+    return reason;
+  };
+
   return (
     <div className="p-6 lg:p-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Agents</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Workflows</h1>
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="text-xs text-gray-400">{connected ? 'Live' : 'Offline'}</span>
-          <Link href="/agents/new">
-            <Button size="sm">Create Agent</Button>
-          </Link>
         </div>
       </div>
 
@@ -89,11 +112,7 @@ export default function AgentsListPage() {
         <Card>
           <CardContent>
             <p className="text-gray-500 py-8 text-center">
-              No agents created yet.{' '}
-              <Link href="/agents/new" className="text-indigo-600 font-medium hover:underline">
-                Create one
-              </Link>
-              .
+              No workflows created yet. Use the SDK or Chat App to create one.
             </p>
           </CardContent>
         </Card>
@@ -169,6 +188,46 @@ export default function AgentsListPage() {
                       <p className="text-xs text-red-600 mt-1">{run.errorMessage}</p>
                     )}
                     <p className="text-xs text-gray-400 mt-1">Steps completed: {run.stepsCompleted}</p>
+
+                    {/* Paused run info and resume */}
+                    {run.status === 'PAUSED' && (
+                      <div className="mt-3 pt-3 border-t border-amber-100 bg-amber-50/50 -mx-4 -mb-4 px-4 pb-4 rounded-b-xl">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                          </svg>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-amber-800">
+                              Paused — connection required
+                            </p>
+                            {run.pauseReason && (
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Integration: <span className="font-mono">{parsePauseReason(run.pauseReason)}</span>
+                              </p>
+                            )}
+                            {run.pausedAt && (
+                              <p className="text-xs text-amber-500 mt-0.5">
+                                Paused at step {run.pausedAtStepIndex ?? '?'} on {new Date(run.pausedAt).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={resuming === run.id}
+                            onClick={() => handleResume(run)}
+                            className="!text-xs !border-amber-300 !text-amber-800 hover:!bg-amber-100"
+                          >
+                            <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                            </svg>
+                            Resume Run
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

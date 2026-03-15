@@ -23,14 +23,15 @@ function StatBadge({ dot, label }: { dot: 'green' | 'indigo'; label: string }) {
   );
 }
 
-function WizardStep({ label, description, done, href }: {
-  label: string; description: string; done: boolean; href: string;
+function WizardStep({ label, description, done, href, onToggle }: {
+  label: string; description: string; done: boolean; href: string; onToggle?: () => void;
 }) {
   return (
-    <Link href={href} className="flex items-start gap-3 group">
-      <div
-        className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-          done ? 'bg-green-500 border-green-500' : 'border-gray-300 group-hover:border-indigo-400'
+    <div className="flex items-start gap-3 group">
+      <button
+        onClick={(e) => { e.preventDefault(); onToggle?.(); }}
+        className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+          done ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-indigo-400'
         }`}
       >
         {done && (
@@ -38,14 +39,14 @@ function WizardStep({ label, description, done, href }: {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         )}
-      </div>
-      <div>
+      </button>
+      <Link href={href} className="flex-1">
         <p className={`text-sm font-medium ${done ? 'text-gray-400 line-through' : 'text-gray-900 group-hover:text-indigo-700'}`}>
           {label}
         </p>
         {!done && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
@@ -54,6 +55,7 @@ function RecentRunRow({ run, agents }: { run: any; agents: any[] }) {
   const statusColors: Record<string, string> = {
     SUCCEEDED: 'bg-green-100 text-green-700',
     RUNNING: 'bg-blue-100 text-blue-700',
+    PAUSED: 'bg-amber-100 text-amber-700',
     FAILED: 'bg-red-100 text-red-700',
     PENDING: 'bg-gray-100 text-gray-600',
   };
@@ -72,28 +74,28 @@ function RecentRunRow({ run, agents }: { run: any; agents: any[] }) {
   );
 }
 
-function SuggestionCard({ title, description, href }: {
-  title: string; description: string; href: string;
-}) {
-  return (
-    <Link href={href} className="block group">
-      <Card className="hover:border-indigo-200 hover:shadow-indigo-100/50 transition-all duration-150">
-        <CardContent>
-          <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 mb-1">{title}</p>
-          <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
-          <p className="text-xs text-indigo-600 font-medium mt-2 group-hover:underline">Try it →</p>
-        </CardContent>
-      </Card>
-    </Link>
-  );
-}
-
 export default function DashboardPage() {
   const { orgName, workspaceName, workspaceId } = useAuthContext();
   const [agents, setAgents] = useState<any[]>([]);
   const [connections, setConnections] = useState<any[]>([]);
   const [allRuns, setAllRuns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [completedStepKeys, setCompletedStepKeys] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem('dashboard_wizard_completed') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleStep = (key: string) => {
+    setCompletedStepKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      localStorage.setItem('dashboard_wizard_completed', JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     async function load() {
@@ -128,26 +130,26 @@ export default function DashboardPage() {
 
   const wizardSteps = [
     {
-      label: 'Create your first agent',
-      description: 'Define an automation with natural language.',
-      done: agents.length > 0,
-      href: '/agents/new',
+      key: 'configure_integrations',
+      label: 'Configure Integrations with Integration Provider',
+      description: 'Set up your integration provider (e.g. Nango) and sync available integrations.',
+      href: '/integrations',
     },
     {
-      label: 'Connect a service',
-      description: 'Link Gmail, Google Drive, Slack, or Notion.',
-      done: connections.length > 0,
-      href: '/connections',
+      key: 'sync_tools',
+      label: 'Sync Tools and Import Proxy Tools',
+      description: 'Sync tools from your provider, then import proxy action templates for each integration.',
+      href: '/tools',
     },
     {
-      label: 'Watch an agent run',
-      description: 'See your agent execute and produce results.',
-      done: allRuns.some((r) => r.status === 'SUCCEEDED'),
-      href: '/agents',
+      key: 'setup_chat_app',
+      label: 'Setup examples/chat-app with Configuration',
+      description: 'Configure and run the example chat app to test agentic workflows end-to-end.',
+      href: '/api-keys',
     },
   ];
 
-  const completedSteps = wizardSteps.filter((s) => s.done).length;
+  const completedSteps = wizardSteps.filter((s) => completedStepKeys.includes(s.key)).length;
 
   const recentRuns = [...allRuns]
     .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())
@@ -201,8 +203,15 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {wizardSteps.map((step, i) => (
-              <WizardStep key={i} {...step} />
+            {wizardSteps.map((step) => (
+              <WizardStep
+                key={step.key}
+                label={step.label}
+                description={step.description}
+                href={step.href}
+                done={completedStepKeys.includes(step.key)}
+                onToggle={() => toggleStep(step.key)}
+              />
             ))}
           </div>
         </CardContent>
@@ -216,26 +225,27 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600 leading-relaxed">
-              Agent Workflow lets you describe automations in plain English.
-              Our AI translates your instructions into scheduled jobs that
-              connect your services — Gmail, Drive, Slack, and more.
+              Agent Workflow is middleware that orchestrates AI agent workflows
+              across integration providers. Use the SDK to create agents,
+              trigger runs, and manage connections programmatically.
             </p>
-            <Link href="/agents/new" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:underline">
-              Read more →
+            <Link href="/agents" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:underline">
+              View workflows →
             </Link>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <h2 className="text-base font-semibold text-gray-900">Quick start</h2>
+            <h2 className="text-base font-semibold text-gray-900">Quick Start — Sample Chat App</h2>
           </CardHeader>
           <CardContent>
             <ol className="text-sm text-gray-600 space-y-2 list-none">
               {[
-                'Go to Create Agent and type your workflow in natural language.',
-                'Authorize any services the agent needs (OAuth).',
-                'The agent is automatically scheduled and runs on your cron.',
-                'Check Agents to see run history and status.',
+                <><span className="font-mono bg-gray-100 px-1 rounded">cd examples/chat-app</span> and run <span className="font-mono bg-gray-100 px-1 rounded">npm install</span></>,
+                <>Copy <span className="font-mono bg-gray-100 px-1 rounded">.env.local.example</span> to <span className="font-mono bg-gray-100 px-1 rounded">.env.local</span> and set your API key</>,
+                <>Build the SDK: <span className="font-mono bg-gray-100 px-1 rounded">cd ../../packages/sdk && npx tsc</span></>,
+                <>Start the app: <span className="font-mono bg-gray-100 px-1 rounded">npm run dev</span> — opens on <span className="font-mono bg-gray-100 px-1 rounded">http://localhost:3100</span></>,
+                'Describe a workflow in plain English and watch it execute in real-time.',
               ].map((step, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-indigo-600 font-bold shrink-0">{i + 1}.</span>
@@ -253,7 +263,7 @@ export default function DashboardPage() {
           <h2 className="text-base font-semibold text-gray-900">What&apos;s happening</h2>
           {agents.length > 0 && (
             <Link href="/agents" className="text-sm text-indigo-600 font-medium hover:underline">
-              View all agents
+              View all workflows
             </Link>
           )}
         </div>
@@ -261,11 +271,7 @@ export default function DashboardPage() {
           <Card>
             <CardContent>
               <p className="text-sm text-gray-500 py-4 text-center">
-                No agent runs yet.{' '}
-                <Link href="/agents/new" className="text-indigo-600 font-medium hover:underline">
-                  Create your first agent
-                </Link>{' '}
-                to get started.
+                No agent runs yet. Use the SDK to create agents and trigger runs.
               </p>
             </CardContent>
           </Card>
@@ -280,20 +286,28 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Suggested for you */}
+      {/* Resources */}
       <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Suggested for you</h2>
+        <h2 className="text-base font-semibold text-gray-900 mb-3">Resources</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SuggestionCard
-            title="Schedule a daily email digest"
-            description='Try: "Read my unread emails every morning at 8am and summarize them."'
-            href="/agents/new"
-          />
-          <SuggestionCard
-            title="Auto-file receipts to Drive"
-            description='Try: "Find emails with PDF attachments weekly and save to a Receipts folder."'
-            href="/agents/new"
-          />
+          <Link href="/tools" className="block group">
+            <Card className="hover:border-indigo-200 hover:shadow-indigo-100/50 transition-all duration-150">
+              <CardContent>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 mb-1">Tool Registry</p>
+                <p className="text-xs text-gray-500 leading-relaxed">Browse and sync available tools from your integration provider.</p>
+                <p className="text-xs text-indigo-600 font-medium mt-2 group-hover:underline">View tools →</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/connections" className="block group">
+            <Card className="hover:border-indigo-200 hover:shadow-indigo-100/50 transition-all duration-150">
+              <CardContent>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 mb-1">Connections</p>
+                <p className="text-xs text-gray-500 leading-relaxed">Manage end-user connections and integration authorizations.</p>
+                <p className="text-xs text-indigo-600 font-medium mt-2 group-hover:underline">Manage →</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
     </div>

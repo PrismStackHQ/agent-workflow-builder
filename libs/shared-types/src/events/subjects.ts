@@ -17,6 +17,8 @@ export const SUBJECTS = {
 
   // Agent
   AGENT_COMMAND_SUBMITTED: 'agent.command.submitted',
+  AGENT_PLAN_PREVIEW: 'agent.plan.preview',
+  AGENT_PLAN_CONFIRMED: 'agent.plan.confirmed',
   AGENT_DEFINITION_CREATED: 'agent.definition.created',
   AGENT_DEFINITION_READY: 'agent.definition.ready',
 
@@ -29,6 +31,21 @@ export const SUBJECTS = {
   RUNTIME_RUN_STEP_COMPLETED: 'runtime.run.step.completed',
   RUNTIME_RUN_SUCCEEDED: 'runtime.run.succeeded',
   RUNTIME_RUN_FAILED: 'runtime.run.failed',
+  RUNTIME_RUN_PAUSED: 'runtime.run.paused',
+  RUNTIME_RUN_RESUME_REQUESTED: 'runtime.run.resume.requested',
+  RUNTIME_RUN_RESUMED: 'runtime.run.resumed',
+  RUNTIME_RUN_SUB_AGENT_STARTED: 'runtime.run.sub_agent.started',
+  RUNTIME_RUN_ITERATION_PROGRESS: 'runtime.run.iteration.progress',
+  RUNTIME_RUN_THINKING: 'runtime.run.thinking',
+
+  // Planner progress (builder analyzing phase)
+  AGENT_PLANNER_PROGRESS: 'agent.planner.progress',
+
+  // Tools
+  TOOL_REGISTRY_SYNCED: 'tools.registry.synced',
+
+  // Connection completion (end-user OAuth)
+  CONNECTION_COMPLETED: 'connection.completed',
 } as const;
 
 export const STREAM_NAME = 'AGENT_WORKFLOW';
@@ -40,4 +57,5 @@ export const STREAM_SUBJECTS = [
   'agent.>',
   'scheduler.>',
   'runtime.>',
+  'tools.>',
 ];

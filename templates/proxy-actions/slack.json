@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1",
+  "providerType": "slack",
+  "displayName": "Slack",
+  "description": "Team messaging and collaboration platform",
+  "actions": [
+    {
+      "actionName": "post_message",
+      "actionType": "SEND",
+      "displayName": "Post Message",
+      "description": "Send a message to a Slack channel",
+      "method": "POST",
+      "endpoint": "/chat.postMessage",
+      "inputSchema": {
+        "type": "object",
+        "required": ["channel", "text"],
+        "properties": {
+          "channel": { "type": "string", "description": "Channel ID or name", "mapTo": "channel" },
+          "text": { "type": "string", "description": "Message text", "mapTo": "text" },
+          "blocks": { "type": "array", "description": "Block Kit blocks for rich messages", "mapTo": "blocks" }
+        }
+      }
+    },
+    {
+      "actionName": "list_channels",
+      "actionType": "LIST",
+      "displayName": "List Channels",
+      "description": "List Slack channels the bot has access to",
+      "method": "GET",
+      "endpoint": "/conversations.list",
+      "paramsConfig": {
+        "defaults": { "types": "public_channel,private_channel" }
+      },
+      "responseConfig": { "rootPath": "channels" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "number", "description": "Maximum number of channels to return", "default": "10", "aliases": ["maxResults"] }
+        }
+      }
+    }
+  ]
+}

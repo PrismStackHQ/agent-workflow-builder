@@ -36,6 +36,8 @@ model Workspace {
   connectionRefs          ConnectionRef[]
   agentDefinitions        AgentDefinition[]
   availableIntegrations   AvailableIntegration[]
+  toolRegistryEntries     ToolRegistryEntry[]
+  proxyActionDefinitions  ProxyActionDefinition[]
 
   @@index([apiKey])
   @@index([orgId])
@@ -66,7 +68,7 @@ model AvailableIntegration {
   id                  String              @id @default(uuid())
   workspaceId         String
   integrationProvider IntegrationProvider
-  providerKey         String
+  providerConfigKey   String
   displayName         String
   logoUrl             String?
   rawMetadata         Json?
@@ -75,7 +77,7 @@ model AvailableIntegration {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 
-  @@unique([workspaceId, integrationProvider, providerKey])
+  @@unique([workspaceId, integrationProvider, providerConfigKey])
   @@index([workspaceId])
 }
 
@@ -87,18 +89,21 @@ enum ConnectionStatus {
 }
 
 model ConnectionRef {
-  id            String           @id @default(uuid())
-  workspaceId   String
-  provider      String
-  externalRefId String
-  status        ConnectionStatus @default(PENDING)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  workspaceId       String
+  providerConfigKey String
+  externalRefId     String
+  connectionId      String?
+  metadata          Json?
+  status            ConnectionStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 
-  @@unique([workspaceId, provider, externalRefId])
-  @@index([workspaceId, provider])
+  @@unique([workspaceId, providerConfigKey, externalRefId])
+  @@index([workspaceId, providerConfigKey])
+  @@index([workspaceId, externalRefId])
 }
 
 enum AgentStatus {
@@ -115,10 +120,13 @@ model AgentDefinition {
   workspaceId            String
   name                   String
   naturalLanguageCommand String
+  endUserId              String?
   scheduleCron           String?
   triggerType            String      @default("cron")
   requiredConnections    Json        @default("[]")
   steps                  Json        @default("[]")
+  instructions           String?     @db.Text
+  planDescription        String?     @db.Text
   status                 AgentStatus @default(DRAFT)
   k8sCronJobName         String?
   k8sNamespace           String?
@@ -129,30 +137,97 @@ model AgentDefinition {
   runs      AgentRun[]
 
   @@index([workspaceId])
+  @@index([workspaceId, endUserId])
   @@index([status])
 }
 
 enum RunStatus {
   PENDING
   RUNNING
+  PAUSED
   SUCCEEDED
   FAILED
   CANCELLED
 }
 
 model AgentRun {
-  id             String    @id @default(uuid())
-  agentId        String
-  startedAt      DateTime?
-  endedAt        DateTime?
-  status         RunStatus @default(PENDING)
-  stepsCompleted Int       @default(0)
-  logsPointer    String?
-  errorMessage   String?
-  createdAt      DateTime  @default(now())
+  id                String    @id @default(uuid())
+  agentId           String
+  startedAt         DateTime?
+  endedAt           DateTime?
+  status            RunStatus @default(PENDING)
+  stepsCompleted    Int       @default(0)
+  logsPointer       String?
+  errorMessage      String?
+  endUserConnectionId String?
+  pausedAt          DateTime?
+  pausedAtStepIndex Int?
+  pauseReason       String?
+  pauseMetadata     Json?
+  parentRunId       String?
+  depth             Int       @default(0)
+  resumedAt         DateTime?
+  createdAt         DateTime  @default(now())
 
   agent AgentDefinition @relation(fields: [agentId], references: [id])
 
   @@index([agentId, createdAt(sort: Desc)])
   @@index([status])
+}
+
+model ToolRegistryEntry {
+  id                  String              @id @default(uuid())
+  workspaceId         String
+  integrationProvider IntegrationProvider
+  providerConfigKey   String
+  actionName          String
+  displayName         String
+  description         String?
+  type                String?
+  inputSchema         Json?
+  outputSchema        Json?
+  rawDefinition       Json?
+  syncedAt            DateTime            @default(now())
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, integrationProvider, actionName])
+  @@index([workspaceId, providerConfigKey])
+}
+
+model ProxyActionDefinition {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  providerConfigKey String
+  actionName        String
+  actionType        String
+  displayName       String
+  description       String?
+  type              String   @default("proxy")
+  method            String
+  endpoint          String
+
+  paramsConfig      Json?
+  bodyConfig        Json?
+  headersConfig     Json?
+  responseConfig    Json?
+  postProcessConfig Json?
+
+  transformerName   String?
+
+  inputSchema       Json?
+  outputSchema      Json?
+  isEnabled         Boolean  @default(true)
+  isDefault         Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, providerConfigKey, actionName])
+  @@index([workspaceId, providerConfigKey])
+  @@index([workspaceId, isEnabled])
 }

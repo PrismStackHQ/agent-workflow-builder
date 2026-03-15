@@ -3,16 +3,22 @@ export interface AgentStep {
   action: string;
   connector: string;
   params: Record<string, unknown>;
+  description?: string;
+  subAgentId?: string;
+  subAgentName?: string;
+  steps?: AgentStep[];                    // nested steps for for_each
+  outputSchema?: Record<string, unknown>; // structured output for llm_transform
 }
 
 export interface ParsedIntent {
   trigger: {
-    type: 'cron' | 'event';
+    type: 'cron' | 'event' | 'manual';
     schedule?: string;
     event?: string;
   };
   connectors: string[];
   steps: AgentStep[];
+  instructions?: string;
 }
 
 export interface TokenResponse {

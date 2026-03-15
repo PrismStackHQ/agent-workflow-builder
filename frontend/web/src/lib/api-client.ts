@@ -170,6 +170,14 @@ class ApiClient {
     return res.json();
   }
 
+  async syncConnections() {
+    const res = await fetch(`${API_BASE}/connections/sync`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    return res.json();
+  }
+
   async markConnectionReady(refId: string) {
     const res = await fetch(`${API_BASE}/connections/${refId}/ready`, {
       method: 'PATCH',
@@ -206,6 +214,145 @@ class ApiClient {
     const res = await fetch(`${API_BASE}/agents/${agentId}`, {
       method: 'DELETE',
       headers: this.headers(),
+    });
+    return res.json();
+  }
+
+  // Tool registry endpoints
+  async listTools(providerConfigKey?: string) {
+    const params = providerConfigKey ? `?providerConfigKey=${encodeURIComponent(providerConfigKey)}` : '';
+    const res = await fetch(`${API_BASE}/tools${params}`, { headers: this.headers() });
+    return res.json();
+  }
+
+  async syncTools() {
+    const res = await fetch(`${API_BASE}/tools/sync`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    return res.json();
+  }
+
+  async getToolByAction(actionName: string) {
+    const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(actionName)}`, { headers: this.headers() });
+    return res.json();
+  }
+
+  // Connection check endpoints
+  async checkConnection(providerConfigKey: string, connectionId: string) {
+    const res = await fetch(`${API_BASE}/connections/check`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ providerConfigKey, connectionId }),
+    });
+    return res.json();
+  }
+
+  async connectionComplete(providerConfigKey: string, connectionId: string, endUserId: string) {
+    const res = await fetch(`${API_BASE}/connections/complete`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ providerConfigKey, connectionId, endUserId }),
+    });
+    return res.json();
+  }
+
+  // Proxy action definition endpoints
+  async listProxyActions() {
+    const res = await fetch(`${API_BASE}/proxy-actions`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to list proxy actions');
+    return res.json();
+  }
+
+  async getProxyAction(id: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to get proxy action');
+    return res.json();
+  }
+
+  async createProxyAction(data: Record<string, unknown>) {
+    const res = await fetch(`${API_BASE}/proxy-actions`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to create proxy action');
+    return res.json();
+  }
+
+  async updateProxyAction(id: string, data: Record<string, unknown>) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}`, {
+      method: 'PUT',
+      headers: this.headers(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to update proxy action');
+    return res.json();
+  }
+
+  async deleteProxyAction(id: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to delete proxy action');
+    return res.json();
+  }
+
+  async toggleProxyAction(id: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/${id}/toggle`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to toggle proxy action');
+    return res.json();
+  }
+
+  // Proxy action template endpoints
+  async listProxyActionTemplates() {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/list`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to list templates');
+    return res.json();
+  }
+
+  async getProxyActionTemplate(providerType: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/${providerType}`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to get template');
+    return res.json();
+  }
+
+  async importProxyActionTemplate(providerType: string, providerConfigKey: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/${providerType}/import`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ providerConfigKey }),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to import template');
+    return res.json();
+  }
+
+  async uploadProxyActionTemplate(providerConfigKey: string, template: unknown) {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/upload`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ providerConfigKey, template }),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to upload template');
+    return res.json();
+  }
+
+  async getProxyActionRecommendations() {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/recommendations`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to get recommendations');
+    return res.json();
+  }
+
+  // Run resume
+  async resumeRun(agentId: string, runId: string, connectionId: string) {
+    const res = await fetch(`${API_BASE}/agents/${agentId}/runs/${runId}/resume`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ connectionId }),
     });
     return res.json();
   }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 interface NormalizedIntegration {
-  providerKey: string;
+  providerConfigKey: string;
   displayName: string;
   logoUrl: string | null;
   rawMetadata: Record<string, any>;
@@ -45,7 +45,7 @@ export class IntegrationFetcherService {
     const items: any[] = body.data || [];
 
     return items.map((item) => ({
-      providerKey: item.unique_key,
+      providerConfigKey: item.unique_key,
       displayName: item.display_name || item.unique_key,
       logoUrl: item.logo || null,
       rawMetadata: item,

@@ -47,6 +47,7 @@ export interface ConnectionOAuthRequiredEvent {
   agentDraftId: string;
   provider: string;
   connectionRefId?: string;
+  endUserId?: string;
 }
 
 export interface ConnectionOAuthCompletedEvent {
@@ -76,12 +77,51 @@ export interface RagQueryRequest {
   query: string;
 }
 
+// Connection metadata sent with plan preview
+export interface ConnectionInfo {
+  providerConfigKey: string;
+  displayName: string;
+  logoUrl?: string;
+}
+
+// Agent plan events
+export interface AgentPlanPreviewEvent {
+  orgId: string;
+  workspaceId: string;
+  commandId: string;
+  name: string;
+  naturalLanguageCommand: string;
+  triggerType: string;
+  schedule?: string;
+  connectors: string[];
+  steps: AgentStep[];
+  missingConnections: ConnectionInfo[];
+  connectorDisplayNames?: Record<string, string>;
+  instructions?: string;
+  endUserId?: string;
+}
+
+export interface AgentPlanConfirmedEvent {
+  orgId: string;
+  workspaceId: string;
+  commandId: string;
+  naturalLanguageCommand: string;
+  name: string;
+  triggerType: string;
+  schedule?: string;
+  connectors: string[];
+  steps: AgentStep[];
+  instructions?: string;
+  endUserId?: string;
+}
+
 // Agent events
 export interface AgentCommandSubmittedEvent {
   orgId: string;
   workspaceId: string;
   commandId: string;
   naturalLanguageCommand: string;
+  endUserId?: string;
 }
 
 export interface AgentDefinitionCreatedEvent {
@@ -116,6 +156,7 @@ export interface AgentRunTriggeredEvent {
   workspaceId: string;
   agentId: string;
   runId: string;
+  endUserConnectionId?: string;
 }
 
 // Runtime events
@@ -134,6 +175,12 @@ export interface AgentRunStepCompletedEvent {
   runId: string;
   stepIndex: number;
   stepName: string;
+  stepDescription?: string;
+  status?: 'running' | 'completed' | 'failed';
+  icon?: string;
+  inputSummary?: string;
+  outputSummary?: string;
+  arguments?: Record<string, unknown>;
   result?: unknown;
 }
 
@@ -153,4 +200,95 @@ export interface AgentRunFailedEvent {
   runId: string;
   endedAt: string;
   error: string;
+}
+
+export interface AgentRunPausedEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  pausedAtStepIndex: number;
+  reason: string;
+  providerConfigKey: string;
+  actionName: string;
+  connectionId?: string;
+  pausedAt: string;
+}
+
+export interface AgentRunResumeRequestedEvent {
+  orgId: string;
+  workspaceId: string;
+  runId: string;
+  connectionId: string;
+}
+
+export interface AgentRunResumedEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  resumedAt: string;
+}
+
+// Planner progress events (builder analyzing phase)
+export interface AgentPlannerProgressEvent {
+  orgId: string;
+  workspaceId: string;
+  commandId: string;
+  stepType: 'thinking' | 'tool_start' | 'tool_end';
+  label: string;
+  icon?: string;
+  outputSummary?: string;
+}
+
+// Agent thinking/reasoning events
+export interface AgentRunThinkingEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  text: string;
+}
+
+// Sub-agent events
+export interface AgentRunSubAgentStartedEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  stepIndex: number;
+  childAgentId: string;
+  childRunId: string;
+  childAgentName: string;
+  depth: number;
+}
+
+// Iteration events
+export interface AgentRunIterationProgressEvent {
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  stepIndex: number;
+  iterationIndex: number;
+  totalItems: number;
+  status: 'started' | 'completed' | 'failed';
+  itemLabel?: string;
+}
+
+// Tool registry events
+export interface ToolRegistrySyncedEvent {
+  orgId: string;
+  workspaceId: string;
+  toolCount: number;
+  syncedAt: string;
+}
+
+// Connection completion (end-user OAuth)
+export interface ConnectionCompletedEvent {
+  orgId: string;
+  workspaceId: string;
+  providerConfigKey: string;
+  connectionId: string;
+  endUserId: string;
 }

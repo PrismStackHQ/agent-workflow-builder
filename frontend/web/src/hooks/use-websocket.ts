@@ -42,11 +42,16 @@ export function useWebSocket(apiKey: string | null) {
     wsClient.sendOAuthComplete(connectionRefId, provider);
   }, []);
 
+  const sendConnectionCompleted = useCallback((providerConfigKey: string, connectionId: string, endUserId: string) => {
+    wsClient.sendConnectionCompleted(providerConfigKey, connectionId, endUserId);
+  }, []);
+
   return {
     connected,
     messages,
     lastMessage,
     sendCommand,
     sendOAuthComplete,
+    sendConnectionCompleted,
   };
 }

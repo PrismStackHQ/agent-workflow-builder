@@ -14,6 +14,7 @@ import { NatsService } from '@agent-workflow/nats-client';
 import { ApiKeyGuard, CurrentWorkspace } from '@agent-workflow/auth';
 import { SUBJECTS } from '@agent-workflow/shared-types';
 import { IntegrationFetcherService } from './integration-fetcher.service';
+import { ProviderExecutorService, ToolRegistryService } from '@agent-workflow/integration-provider';
 
 @Controller()
 export class ConnectionsController {
@@ -23,6 +24,8 @@ export class ConnectionsController {
     private readonly prisma: PrismaService,
     private readonly nats: NatsService,
     private readonly integrationFetcher: IntegrationFetcherService,
+    private readonly providerExecutor: ProviderExecutorService,
+    private readonly toolRegistry: ToolRegistryService,
   ) {}
 
   @Get('config/connection-endpoint')
@@ -82,7 +85,7 @@ export class ConnectionsController {
           data: fetched.map((item) => ({
             workspaceId: workspace.id,
             integrationProvider: body.integrationProvider as any,
-            providerKey: item.providerKey,
+            providerConfigKey: item.providerConfigKey,
             displayName: item.displayName,
             logoUrl: item.logoUrl,
             rawMetadata: item.rawMetadata,
@@ -102,6 +105,14 @@ export class ConnectionsController {
       });
     } catch (err) {
       this.logger.error(`Failed to fetch integrations from provider: ${err}`);
+    }
+
+    // Also sync tool definitions from the provider
+    try {
+      const toolResult = await this.toolRegistry.syncTools(workspace.id);
+      this.logger.log(`Synced ${toolResult.toolCount} tools for workspace ${workspace.id}`);
+    } catch (err) {
+      this.logger.error(`Failed to sync tools from provider: ${err}`);
     }
 
     const config = await this.prisma.customerConfig.findUnique({
@@ -138,7 +149,7 @@ export class ConnectionsController {
         data: fetched.map((item) => ({
           workspaceId: workspace.id,
           integrationProvider: config.integrationProvider as any,
-          providerKey: item.providerKey,
+          providerConfigKey: item.providerConfigKey,
           displayName: item.displayName,
           logoUrl: item.logoUrl,
           rawMetadata: item.rawMetadata,
@@ -169,6 +180,142 @@ export class ConnectionsController {
     });
   }
 
+  @Post('connections/sync')
+  @UseGuards(ApiKeyGuard)
+  async syncConnections(@CurrentWorkspace() workspace: any) {
+    const config = await this.prisma.customerConfig.findUnique({
+      where: { workspaceId: workspace.id },
+    });
+
+    if (!config?.integrationProvider || !config?.connectionEndpointUrl || !config?.connectionEndpointApiKey) {
+      return { ok: false, error: 'No integration provider configured', connections: [] };
+    }
+
+    try {
+      const providerConnections = await this.providerExecutor.listConnections(workspace.id);
+
+      // Track which connectionRef IDs we see from the provider
+      const liveKeys = new Set<string>();
+
+      for (const conn of providerConnections) {
+        const externalRefId = conn.endUserId || conn.connectionId;
+        const status = conn.status === 'error' ? 'FAILED' : 'READY';
+        liveKeys.add(`${conn.providerConfigKey}::${externalRefId}`);
+
+        await this.prisma.connectionRef.upsert({
+          where: {
+            workspaceId_providerConfigKey_externalRefId: {
+              workspaceId: workspace.id,
+              providerConfigKey: conn.providerConfigKey,
+              externalRefId,
+            },
+          },
+          update: {
+            connectionId: conn.connectionId,
+            status: status as any,
+            metadata: conn.metadata as any || undefined,
+          },
+          create: {
+            workspaceId: workspace.id,
+            providerConfigKey: conn.providerConfigKey,
+            externalRefId,
+            connectionId: conn.connectionId,
+            status: status as any,
+            metadata: conn.metadata as any || undefined,
+          },
+        });
+      }
+
+      // Remove stale ConnectionRefs that no longer exist on the provider side
+      const allLocalRefs = await this.prisma.connectionRef.findMany({
+        where: { workspaceId: workspace.id },
+      });
+
+      const staleIds = allLocalRefs
+        .filter((ref) => !liveKeys.has(`${ref.providerConfigKey}::${ref.externalRefId}`))
+        .map((ref) => ref.id);
+
+      if (staleIds.length > 0) {
+        await this.prisma.connectionRef.deleteMany({
+          where: { id: { in: staleIds } },
+        });
+        this.logger.log(`Removed ${staleIds.length} stale connection(s) deleted from provider`);
+      }
+
+      const connections = await this.prisma.connectionRef.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      this.logger.log(`Synced ${providerConnections.length} connections for workspace ${workspace.id}`);
+      return { ok: true, connections, syncedCount: providerConnections.length, removedCount: staleIds.length };
+    } catch (err) {
+      this.logger.error(`Failed to sync connections: ${err}`);
+      return { ok: false, error: String(err), connections: [] };
+    }
+  }
+
+  @Post('connections/check')
+  @UseGuards(ApiKeyGuard)
+  async checkConnection(
+    @CurrentWorkspace() workspace: any,
+    @Body() body: { providerConfigKey: string; connectionId: string },
+  ) {
+    const result = await this.providerExecutor.checkConnection(
+      workspace.id,
+      body.connectionId,
+      body.providerConfigKey,
+    );
+    return result;
+  }
+
+  @Post('connections/complete')
+  @UseGuards(ApiKeyGuard)
+  async connectionComplete(
+    @CurrentWorkspace() workspace: any,
+    @Body()
+    body: {
+      providerConfigKey: string;
+      connectionId: string;
+      endUserId: string;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    // Upsert ConnectionRef: externalRefId = org's endUserId, connectionId = Nango's connectionId
+    await this.prisma.connectionRef.upsert({
+      where: {
+        workspaceId_providerConfigKey_externalRefId: {
+          workspaceId: workspace.id,
+          providerConfigKey: body.providerConfigKey,
+          externalRefId: body.endUserId,
+        },
+      },
+      update: {
+        connectionId: body.connectionId,
+        status: 'READY',
+        metadata: body.metadata as any || undefined,
+      },
+      create: {
+        workspaceId: workspace.id,
+        providerConfigKey: body.providerConfigKey,
+        externalRefId: body.endUserId,
+        connectionId: body.connectionId,
+        status: 'READY',
+        metadata: body.metadata as any || undefined,
+      },
+    });
+
+    await this.nats.publish(SUBJECTS.CONNECTION_COMPLETED, {
+      orgId: workspace.orgId,
+      workspaceId: workspace.id,
+      providerConfigKey: body.providerConfigKey,
+      connectionId: body.connectionId,
+      endUserId: body.endUserId,
+    });
+
+    return { ok: true };
+  }
+
   @Post('connections')
   @UseGuards(ApiKeyGuard)
   async createConnectionRef(
@@ -178,7 +325,7 @@ export class ConnectionsController {
     const ref = await this.prisma.connectionRef.create({
       data: {
         workspaceId: workspace.id,
-        provider: body.provider,
+        providerConfigKey: body.provider,
         externalRefId: body.externalRefId,
       },
     });
@@ -187,7 +334,7 @@ export class ConnectionsController {
       orgId: workspace.orgId,
       workspaceId: workspace.id,
       connectionRefId: ref.id,
-      provider: ref.provider,
+      providerConfigKey: ref.providerConfigKey,
       externalRefId: ref.externalRefId,
       status: ref.status,
     });
@@ -223,7 +370,7 @@ export class ConnectionsController {
       orgId: workspace.orgId,
       workspaceId: workspace.id,
       connectionRefId: ref.id,
-      provider: ref.provider,
+      providerConfigKey: ref.providerConfigKey,
     });
 
     return ref;

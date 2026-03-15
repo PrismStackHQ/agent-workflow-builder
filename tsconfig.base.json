@@ -24,7 +24,8 @@
       "@agent-workflow/nats-client": ["libs/nats-client/src"],
       "@agent-workflow/prisma-client": ["libs/prisma-client/src"],
       "@agent-workflow/auth": ["libs/auth/src"],
-      "@agent-workflow/observability": ["libs/observability/src"]
+      "@agent-workflow/observability": ["libs/observability/src"],
+      "@agent-workflow/integration-provider": ["libs/integration-provider/src"]
     }
   },
   "exclude": ["node_modules", "dist"]

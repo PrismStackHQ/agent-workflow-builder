@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:nango.dev)",
+      "Bash(cat \"/Users/dulan/Documents/Dulan/Agent-Workflow-Claude/frontend/web/src/app/\\(dashboard\\)/proxy-actions/page.tsx\")",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(npx tsc:*)",
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*.json)",
+      "Bash(npx prisma:*)",
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/tsconfig*)",
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*)",
+      "Bash(source .env)",
+      "Bash(psql \"$DATABASE_URL\" -c 'SELECT \"\"providerConfigKey\"\", \"\"displayName\"\" FROM \"\"AvailableIntegration\"\" LIMIT 5;')",
+      "Bash(find . -type f \\\\\\(-name *.json -o -name *.yaml -o -name *.yml -o -name *.md -o -name *.ts -o -name *.tsx -o -name *.py -o -name Dockerfile* -o -name docker-compose* -o -name .env* -o -name *.sh -o -name *.toml -o -name *.config.* \\\\\\) ! -path */node_modules/* ! -path */.next/* ! -path */dist/* ! -path */build/* ! -path */.git/* ! -path */.prisma/* -type f)",
+      "Bash(grep -r Agent-Workflow-Claude /Users/dulan/Documents/Dulan/Agent-Workflow-Claude --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=.prisma --include=*.json --include=*.yaml --include=*.yml --include=*.md --include=Dockerfile* --include=docker-compose* -n)",
+      "Bash(grep -r agent-workflow-claude /Users/dulan/Documents/Dulan/Agent-Workflow-Claude --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=.prisma --include=*.json --include=*.yaml --include=*.yml --include=*.md --include=Dockerfile* --include=docker-compose* -n)",
+      "Bash(grep -r \"Agent-Workflow-Claude\\\\|agent-workflow-claude\" /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/libs/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/packages/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/frontend/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/examples/*/package.json)",
+      "Bash(ls /Users/dulan/Documents/Dulan/agent-workflow-builder/frontend/web/src/app/\\\\\\(dashboard\\\\\\)/settings/)"
+    ]
+  }
+}

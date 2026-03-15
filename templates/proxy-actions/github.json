@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1",
+  "providerType": "github",
+  "displayName": "GitHub",
+  "description": "Code hosting, version control, and collaboration",
+  "actions": [
+    {
+      "actionName": "list_repos",
+      "actionType": "LIST",
+      "displayName": "List Repositories",
+      "description": "List repositories for the authenticated user",
+      "method": "GET",
+      "endpoint": "/user/repos",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sort": { "type": "string", "description": "Sort by: created, updated, pushed, full_name", "mapTo": "sort" },
+          "per_page": { "type": "number", "description": "Results per page (max 100)", "default": "10", "aliases": ["limit", "maxResults"] },
+          "type": { "type": "string", "description": "Filter by type: all, owner, public, private, member", "mapTo": "type" }
+        }
+      }
+    },
+    {
+      "actionName": "search_issues",
+      "actionType": "SEARCH",
+      "displayName": "Search Issues",
+      "description": "Search for issues and pull requests across GitHub repositories",
+      "method": "GET",
+      "endpoint": "/search/issues",
+      "responseConfig": { "rootPath": "items" },
+      "inputSchema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string", "description": "GitHub search query (e.g., \"repo:owner/name is:open label:bug\")", "mapTo": "q", "aliases": ["q", "search", "keyword"] },
+          "sort": { "type": "string", "description": "Sort by: comments, reactions, created, updated", "mapTo": "sort" },
+          "per_page": { "type": "number", "description": "Results per page (max 100)", "default": "10", "aliases": ["limit", "maxResults"] }
+        }
+      }
+    }
+  ]
+}

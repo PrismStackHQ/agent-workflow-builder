@@ -3,39 +3,27 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-const INTEGRATION_PROVIDERS = [
-  {
-    value: 'NANGO',
-    label: 'Nango',
-    description: 'Open-source OAuth & token management',
-    defaultUrl: 'https://api.nango.dev/integrations',
-  },
-  {
-    value: 'UNIPILE',
-    label: 'Unipile',
-    description: 'Unified API for messaging & email',
-    defaultUrl: 'https://api.unipile.com',
-  },
-  {
-    value: 'MERGE',
-    label: 'Merge',
-    description: 'Unified API for integrations',
-    defaultUrl: 'https://api.merge.dev',
-  },
-];
-
-interface AvailableIntegration {
+interface ConnectionRef {
   id: string;
-  providerKey: string;
-  displayName: string;
-  logoUrl: string | null;
-  integrationProvider: string;
+  providerConfigKey: string;
+  externalRefId: string;
+  connectionId: string | null;
+  status: 'PENDING' | 'OAUTH_REQUIRED' | 'READY' | 'FAILED';
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-function formatSyncTime(dateStr: string): string {
+const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  READY: { bg: 'bg-green-50', text: 'text-green-700', label: 'Ready' },
+  PENDING: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Pending' },
+  OAUTH_REQUIRED: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'OAuth Required' },
+  FAILED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Failed' },
+};
+
+function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -49,97 +37,49 @@ function formatSyncTime(dateStr: string): string {
 }
 
 export default function ConnectionsPage() {
-  const [selectedProvider, setSelectedProvider] = useState('');
-  const [endpointUrl, setEndpointUrl] = useState('');
-  const [endpointApiKey, setEndpointApiKey] = useState('');
-  const [integrations, setIntegrations] = useState<AvailableIntegration[]>([]);
-  const [status, setStatus] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [connections, setConnections] = useState<ConnectionRef[]>([]);
   const [syncing, setSyncing] = useState(false);
-  const [isConfigSaved, setIsConfigSaved] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('');
 
   useEffect(() => {
-    loadConfig();
-    loadIntegrations();
+    syncFromProvider(true);
   }, []);
 
-  const loadConfig = async () => {
+  const syncFromProvider = async (isInitial = false) => {
+    if (!isInitial) setSyncing(true);
+    setStatus('');
     try {
-      const data = await apiClient.getConnectionConfig();
-      if (data.integrationProvider) {
-        setSelectedProvider(data.integrationProvider);
-        setIsConfigSaved(true);
-        setIsEditing(false);
+      const result = await apiClient.syncConnections();
+      if (result.ok && result.connections) {
+        setConnections(result.connections);
+        if (!isInitial) {
+          setStatus(`Synced ${result.syncedCount} connection${result.syncedCount !== 1 ? 's' : ''} from provider`);
+        }
+      } else if (result.error && result.error !== 'No integration provider configured') {
+        setStatus(result.error);
+      } else {
+        // No provider configured — fall back to showing DB records
+        const data = await apiClient.listConnections();
+        if (Array.isArray(data)) setConnections(data);
       }
-      if (data.connectionEndpointUrl) setEndpointUrl(data.connectionEndpointUrl);
-      if (data.connectionEndpointApiKey) setEndpointApiKey(data.connectionEndpointApiKey);
-      if (data.lastSyncedAt) setLastSyncedAt(data.lastSyncedAt);
-    } catch {}
-  };
-
-  const loadIntegrations = async () => {
-    try {
-      const data = await apiClient.listAvailableIntegrations();
-      if (Array.isArray(data)) setIntegrations(data);
-    } catch {}
-  };
-
-  const handleProviderChange = (provider: string) => {
-    setSelectedProvider(provider);
-    const info = INTEGRATION_PROVIDERS.find((p) => p.value === provider);
-    if (info) setEndpointUrl(info.defaultUrl);
-  };
-
-  const handleConfigureEndpoint = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProvider) {
-      setStatus('Please select an integration provider');
-      return;
-    }
-    setSaving(true);
-    try {
-      const result = await apiClient.configureConnectionEndpoint(selectedProvider, endpointUrl, endpointApiKey);
-      if (result.integrations) {
-        setIntegrations(result.integrations);
-      }
-      if (result.lastSyncedAt) {
-        setLastSyncedAt(result.lastSyncedAt);
-      }
-      setIsConfigSaved(true);
-      setIsEditing(false);
-      setStatus('Integration provider configured successfully');
-    } catch (err) {
-      setStatus('Failed to configure endpoint');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      const result = await apiClient.syncIntegrations();
-      if (result.integrations) {
-        setIntegrations(result.integrations);
-      }
-      if (result.lastSyncedAt) {
-        setLastSyncedAt(result.lastSyncedAt);
-      }
-      setStatus('Integrations synced successfully');
     } catch {
-      setStatus('Failed to sync integrations');
+      // Fall back to DB if sync fails
+      try {
+        const data = await apiClient.listConnections();
+        if (Array.isArray(data)) setConnections(data);
+      } catch {
+        setStatus('Failed to load connections');
+      }
     } finally {
+      setLoading(false);
       setSyncing(false);
     }
   };
 
-  const isFormDisabled = isConfigSaved && !isEditing;
-
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Integrations</h1>
+    <div className="p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Connections</h1>
 
       {status && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm">
@@ -154,140 +94,83 @@ export default function ConnectionsPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-900">Integration Provider</h2>
+              <h2 className="text-base font-semibold text-gray-900">End-User Connections</h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                Select your OAuth token management service. Each workspace can have one provider.
+                Connections synced from your integration provider. Each maps an end-user to a provider account.
               </p>
             </div>
-            {isConfigSaved && !isEditing && (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsEditing(true)}
-              >
-                <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                </svg>
-                Edit
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => syncFromProvider()}
+              loading={syncing}
+            >
+              <svg className={`w-4 h-4 mr-1.5 ${syncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644l3.181-3.183" />
+              </svg>
+              Sync
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleConfigureEndpoint} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Provider</label>
-              <select
-                value={selectedProvider}
-                onChange={(e) => handleProviderChange(e.target.value)}
-                disabled={isFormDisabled}
-                className="block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-gray-900 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 hover:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-              >
-                <option value="">Select a provider</option>
-                {INTEGRATION_PROVIDERS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label} — {p.description}
-                  </option>
-                ))}
-              </select>
+          {loading ? (
+            <div className="text-sm text-gray-400 text-center py-8">Loading connections...</div>
+          ) : connections.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left font-medium text-gray-500 pb-3 pr-4">Provider</th>
+                    <th className="text-left font-medium text-gray-500 pb-3 pr-4">Connection ID</th>
+                    <th className="text-left font-medium text-gray-500 pb-3 pr-4">End User</th>
+                    <th className="text-left font-medium text-gray-500 pb-3 pr-4">Status</th>
+                    <th className="text-left font-medium text-gray-500 pb-3">Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {connections.map((conn) => {
+                    const statusStyle = STATUS_STYLES[conn.status] || STATUS_STYLES.PENDING;
+                    return (
+                      <tr key={conn.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex items-center gap-1.5 font-medium text-gray-900">
+                            {conn.providerConfigKey}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                            {conn.connectionId || '—'}
+                          </code>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="text-gray-600">{conn.externalRefId}</span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                            {statusStyle.label}
+                          </span>
+                        </td>
+                        <td className="py-3 text-gray-400 text-xs">
+                          {formatTime(conn.updatedAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            {selectedProvider && (
-              <>
-                <Input
-                  label="Endpoint URL"
-                  type="url"
-                  placeholder="https://api.example.com"
-                  value={endpointUrl}
-                  onChange={(e) => setEndpointUrl(e.target.value)}
-                  disabled={isFormDisabled}
-                />
-                <Input
-                  label="API Key"
-                  type="text"
-                  placeholder="Your provider API key"
-                  value={endpointApiKey}
-                  onChange={(e) => setEndpointApiKey(e.target.value)}
-                  disabled={isFormDisabled}
-                />
-                {(!isConfigSaved || isEditing) && (
-                  <Button type="submit" loading={saving}>
-                    Save Configuration
-                  </Button>
-                )}
-              </>
-            )}
-          </form>
+          ) : (
+            <div className="text-center py-8">
+              <svg className="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+              <p className="text-sm text-gray-400">
+                No connections found. Click Sync to fetch from your integration provider.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {(integrations.length > 0 || isConfigSaved) && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Available Integrations</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Integrations fetched from your provider. These are available for use in your agents.
-                </p>
-              </div>
-              {isConfigSaved && (
-                <div className="flex items-center gap-3">
-                  {lastSyncedAt && (
-                    <span className="text-xs text-gray-400">
-                      Last synced: {formatSyncTime(lastSyncedAt)}
-                    </span>
-                  )}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={handleSync}
-                    loading={syncing}
-                  >
-                    <svg className={`w-4 h-4 mr-1.5 ${syncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644l3.181-3.183" />
-                    </svg>
-                    Sync
-                  </Button>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {integrations.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {integrations.map((integration) => (
-                  <div
-                    key={integration.id}
-                    className="flex items-center gap-3 border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors"
-                  >
-                    {integration.logoUrl ? (
-                      <img
-                        src={integration.logoUrl}
-                        alt={integration.displayName}
-                        className="w-8 h-8 rounded-lg object-contain shrink-0"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-bold text-gray-400">
-                          {integration.displayName[0]?.toUpperCase()}
-                        </span>
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{integration.displayName}</p>
-                      <p className="text-xs text-gray-400 truncate">{integration.providerKey}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-4">
-                No integrations found. Click Sync to fetch from your provider.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

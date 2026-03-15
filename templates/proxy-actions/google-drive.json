@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "1",
+  "providerType": "google-drive",
+  "displayName": "Google Drive",
+  "description": "File storage, sharing, and collaboration platform",
+  "actions": [
+    {
+      "actionName": "search_files",
+      "actionType": "SEARCH",
+      "displayName": "Search Files",
+      "description": "Search for files in Google Drive by name or query",
+      "method": "GET",
+      "endpoint": "/drive/v3/files",
+      "paramsConfig": {
+        "fieldsParam": { "paramName": "fields", "wrapper": "files" },
+        "queryBuilder": {
+          "target": "q",
+          "join": " and ",
+          "parts": [
+            { "template": "name contains '{{query}}'", "when": "query" },
+            { "template": "name contains '{{fileName}}'", "when": "fileName" },
+            { "template": "mimeType='{{mimeType}}'", "when": "mimeType" },
+            { "literal": "trashed=false" }
+          ]
+        }
+      },
+      "responseConfig": { "rootPath": "files" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "Search query text (file name or keyword)" },
+          "fileName": { "type": "string", "description": "File name to search for (alias for query)" },
+          "mimeType": { "type": "string", "description": "MIME type filter" },
+          "maxResults": { "type": "number", "description": "Maximum results (default: 10)", "mapTo": "pageSize", "default": "10", "aliases": ["limit"] }
+        }
+      },
+      "outputSchema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "mimeType": { "type": "string" },
+            "modifiedTime": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "actionName": "get_file",
+      "actionType": "GET",
+      "displayName": "Get File Metadata",
+      "description": "Get metadata for a specific Google Drive file",
+      "method": "GET",
+      "endpoint": "/drive/v3/files/{{fileId}}",
+      "paramsConfig": {
+        "fieldsParam": { "paramName": "fields" }
+      },
+      "inputSchema": {
+        "type": "object",
+        "required": ["fileId"],
+        "properties": {
+          "fileId": { "type": "string", "description": "The ID of the file" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "mimeType": { "type": "string" },
+          "modifiedTime": { "type": "string" },
+          "size": { "type": "string" },
+          "webViewLink": { "type": "string" }
+        }
+      }
+    },
+    {
+      "actionName": "download_file",
+      "actionType": "DOWNLOAD",
+      "displayName": "Download File",
+      "description": "Download the content of a Google Drive file",
+      "method": "GET",
+      "endpoint": "/drive/v3/files/{{fileId}}",
+      "paramsConfig": { "defaults": { "alt": "media" } },
+      "inputSchema": {
+        "type": "object",
+        "required": ["fileId"],
+        "properties": {
+          "fileId": { "type": "string", "description": "The ID of the file to download" }
+        }
+      }
+    },
+    {
+      "actionName": "create_folder",
+      "actionType": "CREATE",
+      "displayName": "Create Folder",
+      "description": "Create a new folder in Google Drive",
+      "method": "POST",
+      "endpoint": "/drive/v3/files",
+      "bodyConfig": {
+        "defaults": { "mimeType": "application/vnd.google-apps.folder" }
+      },
+      "responseConfig": { "pick": ["id", "name", "mimeType"] },
+      "inputSchema": {
+        "type": "object",
+        "required": ["folderName"],
+        "properties": {
+          "folderName": { "type": "string", "description": "Name for the new folder", "mapTo": "name", "aliases": ["name"] },
+          "parentId": { "type": "string", "description": "Parent folder ID (optional, defaults to root)", "mapTo": "parents", "wrapArray": true }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "ID of the created folder" },
+          "name": { "type": "string" },
+          "mimeType": { "type": "string" }
+        }
+      }
+    }
+  ]
+}

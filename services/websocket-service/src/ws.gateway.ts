@@ -59,6 +59,12 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       case 'oauth_complete':
         await this.handleOAuthComplete(client, msg.payload);
         break;
+      case 'connection_completed':
+        await this.handleConnectionCompleted(client, msg.payload);
+        break;
+      case 'agent_plan_confirm':
+        await this.handlePlanConfirm(client, msg.payload);
+        break;
       case 'ping':
         this.send(client, { type: 'pong' });
         break;
@@ -94,7 +100,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
     });
   }
 
-  private async handleAgentCommand(client: AuthenticatedSocket, payload: { naturalLanguageCommand: string }) {
+  private async handleAgentCommand(client: AuthenticatedSocket, payload: { naturalLanguageCommand: string; endUserId?: string }) {
     if (!client.workspaceId) {
       this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
       return;
@@ -108,6 +114,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       workspaceId: client.workspaceId,
       commandId,
       naturalLanguageCommand: payload.naturalLanguageCommand,
+      endUserId: payload.endUserId,
     });
 
     this.send(client, {
@@ -127,6 +134,56 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
       workspaceId: client.workspaceId,
       connectionRefId: payload.connectionRefId,
       provider: payload.provider,
+    });
+  }
+
+  private async handleConnectionCompleted(
+    client: AuthenticatedSocket,
+    payload: { providerConfigKey: string; connectionId: string; endUserId: string },
+  ) {
+    if (!client.workspaceId) {
+      this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
+      return;
+    }
+
+    await this.nats.publish(SUBJECTS.CONNECTION_COMPLETED, {
+      orgId: client.orgId,
+      workspaceId: client.workspaceId,
+      providerConfigKey: payload.providerConfigKey,
+      connectionId: payload.connectionId,
+      endUserId: payload.endUserId,
+    });
+  }
+
+  private async handlePlanConfirm(
+    client: AuthenticatedSocket,
+    payload: {
+      commandId: string;
+      name: string;
+      naturalLanguageCommand: string;
+      triggerType: string;
+      schedule?: string;
+      connectors: string[];
+      steps: any[];
+      endUserId?: string;
+    },
+  ) {
+    if (!client.workspaceId) {
+      this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
+      return;
+    }
+
+    await this.nats.publish(SUBJECTS.AGENT_PLAN_CONFIRMED, {
+      orgId: client.orgId,
+      workspaceId: client.workspaceId,
+      commandId: payload.commandId,
+      name: payload.name,
+      naturalLanguageCommand: payload.naturalLanguageCommand,
+      triggerType: payload.triggerType,
+      schedule: payload.schedule,
+      connectors: payload.connectors,
+      steps: payload.steps,
+      endUserId: payload.endUserId,
     });
   }
 
