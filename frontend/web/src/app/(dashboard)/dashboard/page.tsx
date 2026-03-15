@@ -23,14 +23,15 @@ function StatBadge({ dot, label }: { dot: 'green' | 'indigo'; label: string }) {
   );
 }
 
-function WizardStep({ label, description, done, href }: {
-  label: string; description: string; done: boolean; href: string;
+function WizardStep({ label, description, done, href, onToggle }: {
+  label: string; description: string; done: boolean; href: string; onToggle?: () => void;
 }) {
   return (
-    <Link href={href} className="flex items-start gap-3 group">
-      <div
-        className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-          done ? 'bg-green-500 border-green-500' : 'border-gray-300 group-hover:border-indigo-400'
+    <div className="flex items-start gap-3 group">
+      <button
+        onClick={(e) => { e.preventDefault(); onToggle?.(); }}
+        className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+          done ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-indigo-400'
         }`}
       >
         {done && (
@@ -38,14 +39,14 @@ function WizardStep({ label, description, done, href }: {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         )}
-      </div>
-      <div>
+      </button>
+      <Link href={href} className="flex-1">
         <p className={`text-sm font-medium ${done ? 'text-gray-400 line-through' : 'text-gray-900 group-hover:text-indigo-700'}`}>
           {label}
         </p>
         {!done && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
@@ -79,6 +80,22 @@ export default function DashboardPage() {
   const [connections, setConnections] = useState<any[]>([]);
   const [allRuns, setAllRuns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [completedStepKeys, setCompletedStepKeys] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem('dashboard_wizard_completed') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleStep = (key: string) => {
+    setCompletedStepKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      localStorage.setItem('dashboard_wizard_completed', JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     async function load() {
@@ -113,26 +130,26 @@ export default function DashboardPage() {
 
   const wizardSteps = [
     {
-      label: 'Integrate the SDK',
-      description: 'Install @agent-workflow/sdk and create your first agent programmatically.',
-      done: agents.length > 0,
-      href: '/agents',
+      key: 'configure_integrations',
+      label: 'Configure Integrations with Integration Provider',
+      description: 'Set up your integration provider (e.g. Nango) and sync available integrations.',
+      href: '/integrations',
     },
     {
-      label: 'Connect a service',
-      description: 'Link Gmail, Google Drive, Slack, or Notion via your integration provider.',
-      done: connections.length > 0,
-      href: '/connections',
+      key: 'sync_tools',
+      label: 'Sync Tools and Import Proxy Tools',
+      description: 'Sync tools from your provider, then import proxy action templates for each integration.',
+      href: '/tools',
     },
     {
-      label: 'Watch an agent run',
-      description: 'Trigger a run via the SDK and monitor results here.',
-      done: allRuns.some((r) => r.status === 'SUCCEEDED'),
-      href: '/agents',
+      key: 'setup_chat_app',
+      label: 'Setup examples/chat-app with Configuration',
+      description: 'Configure and run the example chat app to test agentic workflows end-to-end.',
+      href: '/api-keys',
     },
   ];
 
-  const completedSteps = wizardSteps.filter((s) => s.done).length;
+  const completedSteps = wizardSteps.filter((s) => completedStepKeys.includes(s.key)).length;
 
   const recentRuns = [...allRuns]
     .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())
@@ -186,8 +203,15 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {wizardSteps.map((step, i) => (
-              <WizardStep key={i} {...step} />
+            {wizardSteps.map((step) => (
+              <WizardStep
+                key={step.key}
+                label={step.label}
+                description={step.description}
+                href={step.href}
+                done={completedStepKeys.includes(step.key)}
+                onToggle={() => toggleStep(step.key)}
+              />
             ))}
           </div>
         </CardContent>
@@ -206,21 +230,22 @@ export default function DashboardPage() {
               trigger runs, and manage connections programmatically.
             </p>
             <Link href="/agents" className="inline-block mt-3 text-sm text-indigo-600 font-medium hover:underline">
-              View agents →
+              View workflows →
             </Link>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <h2 className="text-base font-semibold text-gray-900">Quick start</h2>
+            <h2 className="text-base font-semibold text-gray-900">Quick Start — Sample Chat App</h2>
           </CardHeader>
           <CardContent>
             <ol className="text-sm text-gray-600 space-y-2 list-none">
               {[
-                'Install the SDK: npm install @agent-workflow/sdk',
-                'Create an agent with steps using client.agents.create().',
-                'Trigger a run with client.runs.trigger(agentId).',
-                'Monitor runs here or subscribe to real-time events via WebSocket.',
+                <><span className="font-mono bg-gray-100 px-1 rounded">cd examples/chat-app</span> and run <span className="font-mono bg-gray-100 px-1 rounded">npm install</span></>,
+                <>Copy <span className="font-mono bg-gray-100 px-1 rounded">.env.local.example</span> to <span className="font-mono bg-gray-100 px-1 rounded">.env.local</span> and set your API key</>,
+                <>Build the SDK: <span className="font-mono bg-gray-100 px-1 rounded">cd ../../packages/sdk && npx tsc</span></>,
+                <>Start the app: <span className="font-mono bg-gray-100 px-1 rounded">npm run dev</span> — opens on <span className="font-mono bg-gray-100 px-1 rounded">http://localhost:3100</span></>,
+                'Describe a workflow in plain English and watch it execute in real-time.',
               ].map((step, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-indigo-600 font-bold shrink-0">{i + 1}.</span>
@@ -238,7 +263,7 @@ export default function DashboardPage() {
           <h2 className="text-base font-semibold text-gray-900">What&apos;s happening</h2>
           {agents.length > 0 && (
             <Link href="/agents" className="text-sm text-indigo-600 font-medium hover:underline">
-              View all agents
+              View all workflows
             </Link>
           )}
         </div>

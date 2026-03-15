@@ -49,7 +49,7 @@ export function ChatContainer() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-sm font-bold text-surface-900">Agent Workflow</h1>
+                <h1 className="text-sm font-bold text-surface-900">Agent Workflow Example App</h1>
                 <p className="text-xs text-surface-500">Chat</p>
               </div>
             </div>

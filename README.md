@@ -68,73 +68,11 @@ cd ../..
 
 ---
 
-## End-to-End Demo
-
-### 1. Create an organization
-
-```bash
-curl -X POST http://localhost:3001/api/v1/orgs \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Demo Corp", "orgEmail": "admin@demo.com"}'
-```
-
-Response: `{"orgId": "xxx", "apiKey": "yyy"}`
-
-### 2. Configure integration provider
-
-```bash
-curl -X PUT http://localhost:3001/api/v1/config/connection-endpoint \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "integrationProvider": "NANGO",
-    "connectionEndpointUrl": "https://api.nango.dev",
-    "connectionEndpointApiKey": "your-nango-secret-key"
-  }'
-```
-
-### 3. Register end-user connections (after OAuth)
-
-```bash
-# Register Gmail connection for end user
-curl -X POST http://localhost:3001/api/v1/connections/complete \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "providerConfigKey": "google-mail",
-    "connectionId": "nango-conn-gmail-001",
-    "endUserId": "user-123",
-    "metadata": {"connectedAt": "2025-01-01"}
-  }'
-```
-
-### 4. Create an agent via natural language
-
-```bash
-curl -X POST http://localhost:3001/api/v1/agents/command \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "naturalLanguageCommand": "Find emails with invoices from my gmail and upload them to gdrive",
-    "endUserId": "user-123"
-  }'
-```
-
-### 5. View agents and runs
-
-```bash
-# List agents
-curl http://localhost:3001/api/v1/agents -H "X-API-Key: YOUR_API_KEY"
-
-# List runs for an agent
-curl http://localhost:3001/api/v1/agents/AGENT_ID/runs -H "X-API-Key: YOUR_API_KEY"
-```
-
----
-
 ## Node.js SDK
 
 The `@agent-workflow/sdk` package (`packages/sdk/`) provides a typed client for the platform.
+
+### Setup
 
 ```typescript
 import { AgentWorkflowClient } from '@agent-workflow/sdk';
@@ -142,43 +80,120 @@ import { AgentWorkflowClient } from '@agent-workflow/sdk';
 const client = new AgentWorkflowClient({
   apiKey: 'your-api-key',
   baseUrl: 'http://localhost:3001/api/v1',
-  wsUrl: 'ws://localhost:3002/ws',
+  endUserId: 'end-user-123',
 });
+```
 
-// Create an agent via natural language
+| Parameter    | Required | Description                                        |
+|--------------|----------|----------------------------------------------------|
+| `apiKey`     | Yes      | Workspace API key (from org creation)               |
+| `baseUrl`    | No       | REST API URL (default: `http://localhost:3001/api/v1`) |
+| `endUserId`  | No       | Default end-user ID for commands and connections    |
+
+### Create agents
+
+```typescript
+// Via natural language
 const { commandId } = await client.agents.submitCommand(
   'find invoices from my gmail and upload to gdrive',
-  'end-user-123',
 );
+```
 
-// Or create an agent with explicit steps
-const agent = await client.agents.create({
-  name: 'Invoice Processor',
-  triggerType: 'cron',
-  scheduleCron: '0 8 * * *',
-  steps: [
-    { index: 0, action: 'EMAILS-LIST', connector: 'google-mail', params: { query: 'invoice' } },
-    { index: 1, action: 'UPLOAD-FILE', connector: 'google-drive', params: {} },
-  ],
-});
+### Manage agents and runs
 
+```typescript
+// List all agents
+const agents = await client.agents.list();
+
+// Get a specific agent
+const agent = await client.agents.get('agent-id');
+
+// Trigger a run
+const { runId } = await client.runs.trigger('agent-id');
+
+// List runs for an agent
+const runs = await client.runs.list('agent-id');
+
+// Resume a paused run (after OAuth)
+await client.runs.resume('agent-id', 'run-id', 'connection-id');
+```
+
+### Connections
+
+```typescript
 // Register an end-user connection (after OAuth)
 await client.connections.complete(
   'google-mail',       // providerConfigKey
   'nango-conn-abc',    // connectionId
-  'end-user-123',      // endUserId
-  { source: 'onboarding' },
 );
 
-// Real-time events
-await client.connect();
-client.on('agent:created', (e) => console.log('Agent created:', e.name));
-client.on('run:started', (e) => console.log('Run started:', e.runId));
-client.on('run:paused', (e) => console.log('Run paused, needs:', e.providerConfigKey));
-client.on('run:succeeded', (e) => console.log('Done:', e.summary));
+// Check connection status
+const status = await client.connections.check('google-mail', 'conn-id');
 ```
 
-Build the SDK:
+### Real-time WebSocket events
+
+```typescript
+// Connect to the WebSocket server
+await client.connect();
+
+// Agent lifecycle events
+client.on('agent:created', (e) => {
+  console.log('Agent created:', e.name, e.agentId);
+});
+
+client.on('agent:scheduled', (e) => {
+  console.log('Agent scheduled:', e.cronJobName, e.nextRunAt);
+});
+
+// Run lifecycle events
+client.on('run:started', (e) => {
+  console.log('Run started:', e.runId);
+});
+
+client.on('run:step_completed', (e) => {
+  console.log(`Step ${e.stepIndex} completed:`, e.stepName);
+});
+
+client.on('run:paused', (e) => {
+  console.log('Run paused — needs OAuth for:', e.providerConfigKey);
+  // Show OAuth card to user, then resume:
+  // await client.runs.resume(e.agentId, e.runId, connectionId);
+});
+
+client.on('run:resumed', (e) => {
+  console.log('Run resumed:', e.runId);
+});
+
+client.on('run:succeeded', (e) => {
+  console.log('Run completed:', e.summary);
+});
+
+client.on('run:failed', (e) => {
+  console.error('Run failed:', e.error);
+});
+
+// Unsubscribe from a specific event
+client.off('run:started', handler);
+
+// Disconnect when done
+client.disconnect();
+```
+
+### Available WebSocket events
+
+| Event                | Payload fields                                          |
+|----------------------|---------------------------------------------------------|
+| `agent:created`      | `agentId`, `name`, `scheduleCron`, `status`             |
+| `agent:scheduled`    | `agentId`, `cronJobName`, `nextRunAt`                   |
+| `run:started`        | `agentId`, `runId`, `startedAt`                         |
+| `run:step_completed` | `agentId`, `runId`, `stepIndex`, `stepName`             |
+| `run:paused`         | `agentId`, `runId`, `reason`, `providerConfigKey`, `actionName`, `pausedAt` |
+| `run:resumed`        | `agentId`, `runId`, `resumedAt`                         |
+| `run:succeeded`      | `agentId`, `runId`, `summary`                           |
+| `run:failed`         | `agentId`, `runId`, `error`                             |
+
+### Build the SDK
 
 ```bash
 cd packages/sdk && npx tsc
@@ -249,7 +264,7 @@ The agent-builder service uses Claude (via LangGraph) to parse natural language 
 Set the key in `.env`:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+OPENAI_API_KEY=openai_api_key
 ```
 
 ---
@@ -301,3 +316,19 @@ agent-workflow-builder/
 | SDK           | TypeScript (Node.js)              |
 | Orchestration | Kubernetes                        |
 | Container     | Docker                            |
+
+---
+
+## TODO
+
+- [ ] Support other integration providers (beyond Nango)
+- [ ] Enable scheduler service
+- [ ] Kubernetes support
+- [ ] Enrich `templates/proxy-actions/` with more integration templates
+- [ ] Usage documentation
+- [ ] Support Bring Your Own LLM
+- [ ] Support Bring Your Own RAG
+
+---
+
+This was built with help from [Claude Code](https://claude.ai/claude-code).

@@ -129,59 +129,125 @@ export default function ApiKeysPage() {
           <h2 className="text-sm font-semibold text-gray-900">Quick start</h2>
           <p className="text-xs text-gray-500 mt-0.5">Use your API key with the SDK</p>
         </div>
-        <div className="px-6 py-5">
-          <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre className="text-sm leading-relaxed">
-              <code>
-                <span className="text-purple-400">import</span>
-                <span className="text-gray-300"> {'{ '}</span>
-                <span className="text-yellow-300">AgentWorkflowClient</span>
-                <span className="text-gray-300">{' }'} </span>
-                <span className="text-purple-400">from</span>
-                <span className="text-green-400"> &apos;@agent-workflow/sdk&apos;</span>
-                <span className="text-gray-300">;</span>
-                {'\n\n'}
-                <span className="text-purple-400">const</span>
-                <span className="text-blue-300"> client</span>
-                <span className="text-gray-300"> = </span>
-                <span className="text-purple-400">new</span>
-                <span className="text-yellow-300"> AgentWorkflowClient</span>
-                <span className="text-gray-300">({'{\n'}</span>
-                <span className="text-blue-300">  apiKey</span>
-                <span className="text-gray-300">: </span>
-                <span className="text-green-400">&apos;{currentWorkspace ? currentWorkspace.apiKey.slice(0, 4) + '...' : 'ws_...'}&apos;</span>
-                <span className="text-gray-300">,{'\n'}</span>
-                <span className="text-blue-300">  baseUrl</span>
-                <span className="text-gray-300">: </span>
-                <span className="text-green-400">&apos;http://localhost:3001/api/v1&apos;</span>
-                <span className="text-gray-300">,{'\n'}</span>
-                <span className="text-gray-300">{'}'});</span>
-                {'\n\n'}
-                <span className="text-gray-500">// Create an agent</span>
-                {'\n'}
-                <span className="text-purple-400">const</span>
-                <span className="text-blue-300"> agent</span>
-                <span className="text-gray-300"> = </span>
-                <span className="text-purple-400">await</span>
-                <span className="text-gray-300"> client.</span>
-                <span className="text-blue-300">agents</span>
-                <span className="text-gray-300">.</span>
-                <span className="text-yellow-300">create</span>
-                <span className="text-gray-300">({'{ ... }'});</span>
-                {'\n\n'}
-                <span className="text-gray-500">// Trigger a run</span>
-                {'\n'}
-                <span className="text-purple-400">const</span>
-                <span className="text-blue-300"> run</span>
-                <span className="text-gray-300"> = </span>
-                <span className="text-purple-400">await</span>
-                <span className="text-gray-300"> client.</span>
-                <span className="text-blue-300">runs</span>
-                <span className="text-gray-300">.</span>
-                <span className="text-yellow-300">trigger</span>
-                <span className="text-gray-300">(agent.id);</span>
-              </code>
-            </pre>
+        <div className="px-6 py-5 space-y-5">
+          {/* Client setup */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Initialize the client</p>
+            <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+              <pre className="text-sm leading-relaxed">
+                <code>
+                  <span className="text-purple-400">import</span>
+                  <span className="text-gray-300"> {'{ '}</span>
+                  <span className="text-yellow-300">AgentWorkflowClient</span>
+                  <span className="text-gray-300">{' }'} </span>
+                  <span className="text-purple-400">from</span>
+                  <span className="text-green-400"> &apos;@agent-workflow/sdk&apos;</span>
+                  <span className="text-gray-300">;</span>
+                  {'\n\n'}
+                  <span className="text-purple-400">const</span>
+                  <span className="text-blue-300"> client</span>
+                  <span className="text-gray-300"> = </span>
+                  <span className="text-purple-400">new</span>
+                  <span className="text-yellow-300"> AgentWorkflowClient</span>
+                  <span className="text-gray-300">({'{\n'}</span>
+                  <span className="text-blue-300">  apiKey</span>
+                  <span className="text-gray-300">: </span>
+                  <span className="text-green-400">&apos;{currentWorkspace ? currentWorkspace.apiKey.slice(0, 4) + '...' : 'ws_...'}&apos;</span>
+                  <span className="text-gray-300">,{'\n'}</span>
+                  <span className="text-blue-300">  baseUrl</span>
+                  <span className="text-gray-300">: </span>
+                  <span className="text-green-400">&apos;http://localhost:3001/api/v1&apos;</span>
+                  <span className="text-gray-300">,{'\n'}</span>
+                  <span className="text-blue-300">  endUserId</span>
+                  <span className="text-gray-300">: </span>
+                  <span className="text-green-400">&apos;end-user-123&apos;</span>
+                  <span className="text-gray-300">,{'\n'}</span>
+                  <span className="text-gray-300">{'}'});</span>
+                  {'\n\n'}
+                  <span className="text-gray-500">// Create an agent via natural language</span>
+                  {'\n'}
+                  <span className="text-purple-400">const</span>
+                  <span className="text-blue-300"> result</span>
+                  <span className="text-gray-300"> = </span>
+                  <span className="text-purple-400">await</span>
+                  <span className="text-gray-300"> client.</span>
+                  <span className="text-blue-300">agents</span>
+                  <span className="text-gray-300">.</span>
+                  <span className="text-yellow-300">submitCommand</span>
+                  <span className="text-gray-300">({'\n'}</span>
+                  <span className="text-green-400">  &apos;find invoices from gmail and upload to drive&apos;</span>
+                  {'\n'}
+                  <span className="text-gray-300">);</span>
+                </code>
+              </pre>
+            </div>
+          </div>
+
+          {/* WebSocket usage */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Real-time WebSocket events</p>
+            <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+              <pre className="text-sm leading-relaxed">
+                <code>
+                  <span className="text-gray-500">// Connect to receive real-time events</span>
+                  {'\n'}
+                  <span className="text-purple-400">await</span>
+                  <span className="text-gray-300"> client.</span>
+                  <span className="text-yellow-300">connect</span>
+                  <span className="text-gray-300">();</span>
+                  {'\n\n'}
+                  <span className="text-gray-300">client.</span>
+                  <span className="text-yellow-300">on</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;run:started&apos;</span>
+                  <span className="text-gray-300">, (e) =&gt; {'{\n'}</span>
+                  <span className="text-gray-300">  console.</span>
+                  <span className="text-yellow-300">log</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;Run started:&apos;</span>
+                  <span className="text-gray-300">, e.runId);{'\n}'});</span>
+                  {'\n\n'}
+                  <span className="text-gray-300">client.</span>
+                  <span className="text-yellow-300">on</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;run:step_completed&apos;</span>
+                  <span className="text-gray-300">, (e) =&gt; {'{\n'}</span>
+                  <span className="text-gray-300">  console.</span>
+                  <span className="text-yellow-300">log</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">`Step ${'${e.stepIndex}'} done:`</span>
+                  <span className="text-gray-300">, e.stepName);{'\n}'});</span>
+                  {'\n\n'}
+                  <span className="text-gray-300">client.</span>
+                  <span className="text-yellow-300">on</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;run:paused&apos;</span>
+                  <span className="text-gray-300">, (e) =&gt; {'{\n'}</span>
+                  <span className="text-gray-300">  console.</span>
+                  <span className="text-yellow-300">log</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;Needs OAuth:&apos;</span>
+                  <span className="text-gray-300">, e.providerConfigKey);{'\n}'});</span>
+                  {'\n\n'}
+                  <span className="text-gray-300">client.</span>
+                  <span className="text-yellow-300">on</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;run:succeeded&apos;</span>
+                  <span className="text-gray-300">, (e) =&gt; {'{\n'}</span>
+                  <span className="text-gray-300">  console.</span>
+                  <span className="text-yellow-300">log</span>
+                  <span className="text-gray-300">(</span>
+                  <span className="text-green-400">&apos;Completed:&apos;</span>
+                  <span className="text-gray-300">, e.summary);{'\n}'});</span>
+                  {'\n\n'}
+                  <span className="text-gray-500">// Disconnect when done</span>
+                  {'\n'}
+                  <span className="text-gray-300">client.</span>
+                  <span className="text-yellow-300">disconnect</span>
+                  <span className="text-gray-300">();</span>
+                </code>
+              </pre>
+            </div>
           </div>
         </div>
       </div>

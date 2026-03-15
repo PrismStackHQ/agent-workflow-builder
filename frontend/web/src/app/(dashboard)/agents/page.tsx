@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { apiClient } from '@/lib/api-client';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { Card, CardContent } from '@/components/ui/card';
@@ -102,13 +101,10 @@ export default function AgentsListPage() {
   return (
     <div className="p-6 lg:p-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Agents</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Workflows</h1>
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="text-xs text-gray-400">{connected ? 'Live' : 'Offline'}</span>
-          <Link href="/agents/new">
-            <Button size="sm">Create Agent</Button>
-          </Link>
         </div>
       </div>
 
@@ -116,11 +112,7 @@ export default function AgentsListPage() {
         <Card>
           <CardContent>
             <p className="text-gray-500 py-8 text-center">
-              No agents created yet.{' '}
-              <Link href="/agents/new" className="text-indigo-600 font-medium hover:underline">
-                Create one
-              </Link>
-              .
+              No workflows created yet. Use the SDK or Chat App to create one.
             </p>
           </CardContent>
         </Card>

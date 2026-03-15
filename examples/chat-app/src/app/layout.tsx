@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Agent Workflow Chat',
+  title: 'Agent Workflow Example Chat App',
   description: 'Agentic chat powered by Agent Workflow SDK',
 };
 
