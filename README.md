@@ -37,7 +37,7 @@ An intelligent automation platform that converts natural language commands into 
 ### 1. Clone and install dependencies
 
 ```bash
-cd Agent-Workflow-Claude
+cd agent-workflow-builder
 cp .env.example .env
 npm install
 ```
@@ -257,7 +257,7 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 ## Project Structure
 
 ```
-Agent-Workflow-Claude/
+agent-workflow-builder/
 ├── libs/                        # Shared TypeScript libraries
 │   ├── shared-types/            # Event payloads, DTOs, enums
 │   ├── nats-client/             # NATS JetStream NestJS module
