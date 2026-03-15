@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
-import { ProxyActionRegistry, TemplateLoaderService } from '@agent-workflow/integration-provider';
+import { ProxyActionRegistry, TemplateLoaderService, ToolRegistryService } from '@agent-workflow/integration-provider';
 import { CreateProxyActionDto } from './dto/create-proxy-action.dto';
 import { UpdateProxyActionDto } from './dto/update-proxy-action.dto';
 
@@ -20,6 +20,7 @@ export class ProxyActionsService {
     private readonly prisma: PrismaService,
     private readonly proxyRegistry: ProxyActionRegistry,
     private readonly templateLoader: TemplateLoaderService,
+    private readonly toolRegistry: ToolRegistryService,
   ) {}
 
   async list(workspaceId: string) {
@@ -215,6 +216,7 @@ export class ProxyActionsService {
     }
 
     this.proxyRegistry.invalidateCache(workspaceId);
+    await this.toolRegistry.syncProxyTools(workspaceId);
     this.logger.log(`Imported ${created} proxy actions from template "${providerType}" for ${providerConfigKey}`);
     return { imported: created, skipped: templates.length - created, total: templates.length };
   }
@@ -267,6 +269,7 @@ export class ProxyActionsService {
     }
 
     this.proxyRegistry.invalidateCache(workspaceId);
+    await this.toolRegistry.syncProxyTools(workspaceId);
     this.logger.log(`Uploaded ${created} proxy actions for ${providerConfigKey} from custom template`);
     return { imported: created, skipped: template.actions.length - created, total: template.actions.length };
   }

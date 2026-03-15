@@ -28,9 +28,14 @@ export class ToolRegistryService {
     const provider = this.providerFactory.getProvider(config.integrationProvider);
     const tools = await provider.listTools(config.connectionEndpointUrl, config.connectionEndpointApiKey);
 
-    // Delete existing tools for this workspace+provider, then insert fresh
+    // Delete existing non-proxy tools for this workspace+provider, then insert fresh
+    // Proxy tools are managed separately via Import Proxy Tools
     await this.prisma.toolRegistryEntry.deleteMany({
-      where: { workspaceId, integrationProvider: config.integrationProvider as any },
+      where: {
+        workspaceId,
+        integrationProvider: config.integrationProvider as any,
+        type: { not: 'proxy' },
+      },
     });
 
     if (tools.length > 0) {
@@ -50,95 +55,22 @@ export class ToolRegistryService {
       });
     }
 
-    // Auto-generate ProxyActionDefinitions from templates for each available integration
-    await this.ensureProxyActionDefinitions(workspaceId);
-
-    // Invalidate proxy registry cache so it picks up newly created definitions
-    this.proxyRegistry.invalidateCache(workspaceId);
-
-    // Sync proxy-based tools into ToolRegistryEntry so they are discoverable
-    const proxyCount = await this.syncProxyTools(workspaceId, config.integrationProvider);
-
-    const totalCount = tools.length + proxyCount;
-    this.logger.log(`Synced ${tools.length} provider tools + ${proxyCount} proxy tools for workspace ${workspaceId}`);
-    return { toolCount: totalCount };
-  }
-
-  /**
-   * Auto-generate ProxyActionDefinition rows for each AvailableIntegration
-   * that has templates defined.
-   *
-   * Uses the actual Nango integration key (AvailableIntegration.providerConfigKey)
-   * as providerConfigKey, so it matches ToolRegistryEntry.providerConfigKey directly.
-   */
-  private async ensureProxyActionDefinitions(workspaceId: string): Promise<void> {
-    const availableIntegrations = await this.prisma.availableIntegration.findMany({
-      where: { workspaceId },
-      select: { providerConfigKey: true, displayName: true, rawMetadata: true },
-    });
-
-    for (const ai of availableIntegrations) {
-      const meta = ai.rawMetadata as Record<string, unknown> | null;
-      const providerType = (meta?.provider as string) || ai.providerConfigKey;
-      const nangoKey = ai.providerConfigKey; // actual Nango integration key
-
-      const templates = this.templateLoader.getTemplateForProvider(providerType);
-      if (templates.length === 0) {
-        this.logger.debug(`No proxy templates for provider type "${providerType}" (${ai.displayName})`);
-        continue;
-      }
-
-      // Check which actions already exist for this workspace + providerConfigKey
-      const existing = await this.prisma.proxyActionDefinition.findMany({
-        where: { workspaceId, providerConfigKey: nangoKey },
-        select: { actionName: true },
-      });
-      const existingActions = new Set(existing.map((e: { actionName: string }) => e.actionName));
-
-      let created = 0;
-      for (const template of templates) {
-        if (existingActions.has(template.actionName)) continue;
-
-        await this.prisma.proxyActionDefinition.create({
-          data: {
-            workspaceId,
-            providerConfigKey: nangoKey,
-            actionName: template.actionName,
-            actionType: template.actionType,
-            displayName: template.displayName,
-            description: template.description,
-            method: template.method,
-            endpoint: template.endpoint,
-            paramsConfig: (template.paramsConfig || undefined) as any,
-            bodyConfig: (template.bodyConfig || undefined) as any,
-            headersConfig: (template.headersConfig || undefined) as any,
-            responseConfig: (template.responseConfig || undefined) as any,
-            postProcessConfig: (template.postProcessConfig || undefined) as any,
-            inputSchema: (template.inputSchema || undefined) as any,
-            outputSchema: (template.outputSchema || undefined) as any,
-            isDefault: true,
-            isEnabled: true,
-          },
-        });
-        created++;
-      }
-
-      if (created > 0) {
-        this.logger.log(
-          `Auto-generated ${created} proxy actions for "${ai.displayName}" (${nangoKey}) in workspace ${workspaceId}`,
-        );
-      }
-    }
+    this.logger.log(`Synced ${tools.length} provider tools for workspace ${workspaceId}`);
+    return { toolCount: tools.length };
   }
 
   /**
    * Sync proxy action configs into the tool registry so they are discoverable
    * via getTools() and findToolByAction() alongside Nango-sourced actions.
    *
-   * Since ProxyActionDefinition.providerConfigKey stores the actual Nango
-   * integration key, no key resolution is needed -- they match directly.
+   * Called explicitly after proxy action imports (not during tool sync).
    */
-  private async syncProxyTools(workspaceId: string, integrationProvider: string): Promise<number> {
+  async syncProxyTools(workspaceId: string): Promise<number> {
+    const config = await this.prisma.customerConfig.findUnique({
+      where: { workspaceId },
+    });
+    if (!config?.integrationProvider) return 0;
+    const integrationProvider = config.integrationProvider;
     await this.proxyRegistry.ensureLoaded(workspaceId);
     const proxyConfigs = this.proxyRegistry.getAll(workspaceId);
     if (proxyConfigs.length === 0) return 0;

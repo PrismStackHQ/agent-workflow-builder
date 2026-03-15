@@ -8,7 +8,9 @@
       "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*.json)",
       "Bash(npx prisma:*)",
       "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/tsconfig*)",
-      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*)"
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*)",
+      "Bash(source .env)",
+      "Bash(psql \"$DATABASE_URL\" -c 'SELECT \"\"providerConfigKey\"\", \"\"displayName\"\" FROM \"\"AvailableIntegration\"\" LIMIT 5;')"
     ]
   }
 }

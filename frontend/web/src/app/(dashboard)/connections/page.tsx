@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 
 interface ConnectionRef {
   id: string;
-  provider: string;
+  providerConfigKey: string;
   externalRefId: string;
   connectionId: string | null;
   status: 'PENDING' | 'OAUTH_REQUIRED' | 'READY' | 'FAILED';
@@ -134,7 +134,7 @@ export default function ConnectionsPage() {
                       <tr key={conn.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="py-3 pr-4">
                           <span className="inline-flex items-center gap-1.5 font-medium text-gray-900">
-                            {conn.provider}
+                            {conn.providerConfigKey}
                           </span>
                         </td>
                         <td className="py-3 pr-4">

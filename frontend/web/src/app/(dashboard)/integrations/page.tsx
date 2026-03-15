@@ -48,15 +48,6 @@ function formatSyncTime(dateStr: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-interface TemplateRecommendation {
-  providerType: string;
-  providerConfigKey: string;
-  displayName: string;
-  actionCount: number;
-  alreadyImported: boolean;
-  importedActionCount: number;
-}
-
 export default function ConnectionsPage() {
   const [selectedProvider, setSelectedProvider] = useState('');
   const [endpointUrl, setEndpointUrl] = useState('');
@@ -68,13 +59,10 @@ export default function ConnectionsPage() {
   const [isConfigSaved, setIsConfigSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
-  const [recommendations, setRecommendations] = useState<TemplateRecommendation[]>([]);
-  const [importingKey, setImportingKey] = useState<string | null>(null);
 
   useEffect(() => {
     loadConfig();
     loadIntegrations();
-    loadRecommendations();
   }, []);
 
   const loadConfig = async () => {
@@ -96,26 +84,6 @@ export default function ConnectionsPage() {
       const data = await apiClient.listAvailableIntegrations();
       if (Array.isArray(data)) setIntegrations(data);
     } catch {}
-  };
-
-  const loadRecommendations = async () => {
-    try {
-      const data = await apiClient.getProxyActionRecommendations();
-      if (Array.isArray(data)) setRecommendations(data.filter((r: TemplateRecommendation) => !r.alreadyImported));
-    } catch {}
-  };
-
-  const handleImportTemplate = async (rec: TemplateRecommendation) => {
-    setImportingKey(rec.providerConfigKey);
-    try {
-      await apiClient.importProxyActionTemplate(rec.providerType, rec.providerConfigKey);
-      setRecommendations((prev) => prev.filter((r) => r.providerConfigKey !== rec.providerConfigKey));
-      setStatus(`Imported ${rec.actionCount} proxy actions for ${rec.displayName}`);
-    } catch {
-      setStatus(`Failed to import template for ${rec.displayName}`);
-    } finally {
-      setImportingKey(null);
-    }
   };
 
   const handleProviderChange = (provider: string) => {
@@ -160,7 +128,6 @@ export default function ConnectionsPage() {
         setLastSyncedAt(result.lastSyncedAt);
       }
       setStatus('Integrations synced successfully');
-      loadRecommendations();
     } catch {
       setStatus('Failed to sync integrations');
     } finally {
@@ -252,42 +219,6 @@ export default function ConnectionsPage() {
           </form>
         </CardContent>
       </Card>
-
-      {/* Template recommendations banner */}
-      {recommendations.length > 0 && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4">
-          <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-            </svg>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-indigo-800">Proxy action templates available</p>
-              <p className="text-xs text-indigo-600 mt-0.5">
-                Import pre-built proxy actions for your connected integrations.
-              </p>
-              <div className="flex flex-wrap gap-2 mt-3">
-                {recommendations.map((rec) => (
-                  <button
-                    key={rec.providerConfigKey}
-                    onClick={() => handleImportTemplate(rec)}
-                    disabled={importingKey === rec.providerConfigKey}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-indigo-200 text-sm text-indigo-700 hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                  >
-                    {importingKey === rec.providerConfigKey ? (
-                      <div className="w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                    ) : (
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                      </svg>
-                    )}
-                    {rec.displayName} ({rec.actionCount} actions)
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {(integrations.length > 0 || isConfigSaved) && (
         <Card>
