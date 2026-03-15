@@ -85,7 +85,7 @@ export class ConnectionsController {
           data: fetched.map((item) => ({
             workspaceId: workspace.id,
             integrationProvider: body.integrationProvider as any,
-            providerKey: item.providerKey,
+            providerConfigKey: item.providerConfigKey,
             displayName: item.displayName,
             logoUrl: item.logoUrl,
             rawMetadata: item.rawMetadata,
@@ -149,7 +149,7 @@ export class ConnectionsController {
         data: fetched.map((item) => ({
           workspaceId: workspace.id,
           integrationProvider: config.integrationProvider as any,
-          providerKey: item.providerKey,
+          providerConfigKey: item.providerConfigKey,
           displayName: item.displayName,
           logoUrl: item.logoUrl,
           rawMetadata: item.rawMetadata,
@@ -204,9 +204,9 @@ export class ConnectionsController {
 
         await this.prisma.connectionRef.upsert({
           where: {
-            workspaceId_provider_externalRefId: {
+            workspaceId_providerConfigKey_externalRefId: {
               workspaceId: workspace.id,
-              provider: conn.providerConfigKey,
+              providerConfigKey: conn.providerConfigKey,
               externalRefId,
             },
           },
@@ -217,7 +217,7 @@ export class ConnectionsController {
           },
           create: {
             workspaceId: workspace.id,
-            provider: conn.providerConfigKey,
+            providerConfigKey: conn.providerConfigKey,
             externalRefId,
             connectionId: conn.connectionId,
             status: status as any,
@@ -232,7 +232,7 @@ export class ConnectionsController {
       });
 
       const staleIds = allLocalRefs
-        .filter((ref) => !liveKeys.has(`${ref.provider}::${ref.externalRefId}`))
+        .filter((ref) => !liveKeys.has(`${ref.providerConfigKey}::${ref.externalRefId}`))
         .map((ref) => ref.id);
 
       if (staleIds.length > 0) {
@@ -259,12 +259,12 @@ export class ConnectionsController {
   @UseGuards(ApiKeyGuard)
   async checkConnection(
     @CurrentWorkspace() workspace: any,
-    @Body() body: { integrationKey: string; connectionId: string },
+    @Body() body: { providerConfigKey: string; connectionId: string },
   ) {
     const result = await this.providerExecutor.checkConnection(
       workspace.id,
       body.connectionId,
-      body.integrationKey,
+      body.providerConfigKey,
     );
     return result;
   }
@@ -275,7 +275,7 @@ export class ConnectionsController {
     @CurrentWorkspace() workspace: any,
     @Body()
     body: {
-      integrationKey: string;
+      providerConfigKey: string;
       connectionId: string;
       endUserId: string;
       metadata?: Record<string, unknown>;
@@ -284,9 +284,9 @@ export class ConnectionsController {
     // Upsert ConnectionRef: externalRefId = org's endUserId, connectionId = Nango's connectionId
     await this.prisma.connectionRef.upsert({
       where: {
-        workspaceId_provider_externalRefId: {
+        workspaceId_providerConfigKey_externalRefId: {
           workspaceId: workspace.id,
-          provider: body.integrationKey,
+          providerConfigKey: body.providerConfigKey,
           externalRefId: body.endUserId,
         },
       },
@@ -297,7 +297,7 @@ export class ConnectionsController {
       },
       create: {
         workspaceId: workspace.id,
-        provider: body.integrationKey,
+        providerConfigKey: body.providerConfigKey,
         externalRefId: body.endUserId,
         connectionId: body.connectionId,
         status: 'READY',
@@ -308,7 +308,7 @@ export class ConnectionsController {
     await this.nats.publish(SUBJECTS.CONNECTION_COMPLETED, {
       orgId: workspace.orgId,
       workspaceId: workspace.id,
-      integrationKey: body.integrationKey,
+      providerConfigKey: body.providerConfigKey,
       connectionId: body.connectionId,
       endUserId: body.endUserId,
     });
@@ -325,7 +325,7 @@ export class ConnectionsController {
     const ref = await this.prisma.connectionRef.create({
       data: {
         workspaceId: workspace.id,
-        provider: body.provider,
+        providerConfigKey: body.provider,
         externalRefId: body.externalRefId,
       },
     });
@@ -334,7 +334,7 @@ export class ConnectionsController {
       orgId: workspace.orgId,
       workspaceId: workspace.id,
       connectionRefId: ref.id,
-      provider: ref.provider,
+      providerConfigKey: ref.providerConfigKey,
       externalRefId: ref.externalRefId,
       status: ref.status,
     });
@@ -370,7 +370,7 @@ export class ConnectionsController {
       orgId: workspace.orgId,
       workspaceId: workspace.id,
       connectionRefId: ref.id,
-      provider: ref.provider,
+      providerConfigKey: ref.providerConfigKey,
     });
 
     return ref;

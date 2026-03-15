@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1",
+  "providerType": "notion",
+  "displayName": "Notion",
+  "description": "All-in-one workspace for notes, docs, and databases",
+  "actions": [
+    {
+      "actionName": "search",
+      "actionType": "SEARCH",
+      "displayName": "Search Notion",
+      "description": "Search for pages and databases in Notion",
+      "method": "POST",
+      "endpoint": "/v1/search",
+      "headersConfig": { "static": { "Notion-Version": "2022-06-28" } },
+      "responseConfig": { "rootPath": "results" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "Search query text", "aliases": ["q", "search", "keyword"] },
+          "filter": { "type": "object", "description": "Filter by object type (page or database)", "mapTo": "filter" },
+          "sort": { "type": "object", "description": "Sort order for results", "mapTo": "sort" },
+          "limit": { "type": "number", "description": "Max results per page", "mapTo": "page_size", "default": 10, "aliases": ["maxResults"] }
+        }
+      }
+    },
+    {
+      "actionName": "get_page",
+      "actionType": "GET",
+      "displayName": "Get Page",
+      "description": "Retrieve a Notion page by ID",
+      "method": "GET",
+      "endpoint": "/v1/pages/{{pageId}}",
+      "headersConfig": { "static": { "Notion-Version": "2022-06-28" } },
+      "inputSchema": {
+        "type": "object",
+        "required": ["pageId"],
+        "properties": {
+          "pageId": { "type": "string", "description": "The Notion page ID" }
+        }
+      }
+    }
+  ]
+}

@@ -219,8 +219,8 @@ class ApiClient {
   }
 
   // Tool registry endpoints
-  async listTools(integrationKey?: string) {
-    const params = integrationKey ? `?integrationKey=${encodeURIComponent(integrationKey)}` : '';
+  async listTools(providerConfigKey?: string) {
+    const params = providerConfigKey ? `?providerConfigKey=${encodeURIComponent(providerConfigKey)}` : '';
     const res = await fetch(`${API_BASE}/tools${params}`, { headers: this.headers() });
     return res.json();
   }
@@ -239,20 +239,20 @@ class ApiClient {
   }
 
   // Connection check endpoints
-  async checkConnection(integrationKey: string, connectionId: string) {
+  async checkConnection(providerConfigKey: string, connectionId: string) {
     const res = await fetch(`${API_BASE}/connections/check`, {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify({ integrationKey, connectionId }),
+      body: JSON.stringify({ providerConfigKey, connectionId }),
     });
     return res.json();
   }
 
-  async connectionComplete(integrationKey: string, connectionId: string, endUserId: string) {
+  async connectionComplete(providerConfigKey: string, connectionId: string, endUserId: string) {
     const res = await fetch(`${API_BASE}/connections/complete`, {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify({ integrationKey, connectionId, endUserId }),
+      body: JSON.stringify({ providerConfigKey, connectionId, endUserId }),
     });
     return res.json();
   }
@@ -305,6 +305,45 @@ class ApiClient {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error((await res.json()).message || 'Failed to toggle proxy action');
+    return res.json();
+  }
+
+  // Proxy action template endpoints
+  async listProxyActionTemplates() {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/list`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to list templates');
+    return res.json();
+  }
+
+  async getProxyActionTemplate(providerType: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/${providerType}`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to get template');
+    return res.json();
+  }
+
+  async importProxyActionTemplate(providerType: string, providerConfigKey: string) {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/${providerType}/import`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ providerConfigKey }),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to import template');
+    return res.json();
+  }
+
+  async uploadProxyActionTemplate(providerConfigKey: string, template: unknown) {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/upload`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ providerConfigKey, template }),
+    });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to upload template');
+    return res.json();
+  }
+
+  async getProxyActionRecommendations() {
+    const res = await fetch(`${API_BASE}/proxy-actions/templates/recommendations`, { headers: this.headers() });
+    if (!res.ok) throw new Error((await res.json()).message || 'Failed to get recommendations');
     return res.json();
   }
 

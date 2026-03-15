@@ -26,7 +26,7 @@ export class ConnectionService {
 
   async getReadyConnections(workspaceId: string, providers: string[]) {
     return this.prisma.connectionRef.findMany({
-      where: { workspaceId, provider: { in: providers }, status: 'READY' },
+      where: { workspaceId, providerConfigKey: { in: providers }, status: 'READY' },
     });
   }
 }

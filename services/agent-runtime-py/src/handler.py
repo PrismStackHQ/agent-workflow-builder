@@ -237,7 +237,7 @@ async def register_handlers(
     # ── Handle connection completed ────────────────────────────────────────
 
     async def handle_connection_completed(data: dict) -> None:
-        integration_key = data["integrationKey"]
+        integration_key = data["providerConfigKey"]
         workspace_id = data["workspaceId"]
         org_id = data.get("orgId", "")
         connection_id = data.get("connectionId", "")

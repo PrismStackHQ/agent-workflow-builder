@@ -167,7 +167,7 @@ export class WsHandler implements OnModuleInit {
             agentId: data.agentId,
             runId: data.runId,
             reason: data.reason,
-            integrationKey: data.integrationKey,
+            providerConfigKey: data.providerConfigKey,
             actionName: data.actionName,
             pausedAt: data.pausedAt,
           },

@@ -140,12 +140,12 @@ async def _resolve_connection(
     result = await db.execute(
         select(ConnectionRef).where(
             *where_base,
-            ConnectionRef.provider == connector,
+            ConnectionRef.providerConfigKey == connector,
         ).limit(1)
     )
     exact = result.scalar_one_or_none()
     if exact and exact.connectionId:
-        return {"connectionId": exact.connectionId, "provider": exact.provider}
+        return {"connectionId": exact.connectionId, "providerConfigKey": exact.providerConfigKey}
 
     # Resolve via AvailableIntegration
     ai_result = await db.execute(
@@ -160,7 +160,7 @@ async def _resolve_connection(
         meta = ai.rawMetadata or {}
         nango_provider = str(meta.get("provider", "")).lower()
         display_lower = ai.displayName.lower().replace(" ", "-")
-        pk_lower = ai.providerKey.lower()
+        pk_lower = ai.providerConfigKey.lower()
 
         if any([
             pk_lower == connector_lower,
@@ -172,12 +172,12 @@ async def _resolve_connection(
             ref_result = await db.execute(
                 select(ConnectionRef).where(
                     *where_base,
-                    ConnectionRef.provider == ai.providerKey,
+                    ConnectionRef.providerConfigKey == ai.providerConfigKey,
                 ).limit(1)
             )
             ref = ref_result.scalar_one_or_none()
             if ref and ref.connectionId:
-                return {"connectionId": ref.connectionId, "provider": ref.provider}
+                return {"connectionId": ref.connectionId, "providerConfigKey": ref.providerConfigKey}
 
     return None
 

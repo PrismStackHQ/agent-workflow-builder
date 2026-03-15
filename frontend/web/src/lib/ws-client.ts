@@ -74,10 +74,10 @@ class WsClient {
     });
   }
 
-  sendConnectionCompleted(integrationKey: string, connectionId: string, endUserId: string) {
+  sendConnectionCompleted(providerConfigKey: string, connectionId: string, endUserId: string) {
     this.send({
       type: 'connection_completed',
-      payload: { integrationKey, connectionId, endUserId },
+      payload: { providerConfigKey, connectionId, endUserId },
     });
   }
 

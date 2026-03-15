@@ -67,7 +67,7 @@ def create_planner_tools(
         result = await db.execute(
             select(ConnectionRef).where(
                 *where_clause,
-                ConnectionRef.provider == integration_key,
+                ConnectionRef.providerConfigKey == integration_key,
             ).limit(1)
         )
         exact = result.scalar_one_or_none()
@@ -87,13 +87,13 @@ def create_planner_tools(
             meta = ai.rawMetadata or {}
             nango_provider = str(meta.get("provider", "")).lower()
             display_lower = ai.displayName.lower().replace(" ", "-")
-            pk_lower = ai.providerKey.lower()
+            pk_lower = ai.providerConfigKey.lower()
 
             if pk_lower == key_lower or nango_provider == key_lower or display_lower == key_lower:
                 ref_result = await db.execute(
                     select(ConnectionRef).where(
                         *where_clause,
-                        ConnectionRef.provider == ai.providerKey,
+                        ConnectionRef.providerConfigKey == ai.providerConfigKey,
                     ).limit(1)
                 )
                 ref = ref_result.scalar_one_or_none()

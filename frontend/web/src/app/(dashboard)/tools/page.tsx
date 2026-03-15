@@ -8,7 +8,7 @@ import { ProxyActionEditor } from '@/components/proxy-action-editor';
 
 interface ToolEntry {
   id: string;
-  integrationKey: string;
+  providerConfigKey: string;
   actionName: string;
   displayName: string;
   description: string | null;
@@ -150,11 +150,11 @@ export default function ToolsPage() {
   };
 
   // Filters
-  const integrationKeys = [...new Set(tools.map((t) => t.integrationKey))].sort();
+  const providerConfigKeys = [...new Set(tools.map((t) => t.providerConfigKey))].sort();
   const toolTypes = [...new Set(tools.map((t) => t.type).filter(Boolean))].sort() as string[];
 
   let filteredTools = tools;
-  if (filterKey) filteredTools = filteredTools.filter((t) => t.integrationKey === filterKey);
+  if (filterKey) filteredTools = filteredTools.filter((t) => t.providerConfigKey === filterKey);
   if (filterType) filteredTools = filteredTools.filter((t) => t.type === filterType);
 
   const lastSynced = tools.length > 0
@@ -229,7 +229,7 @@ export default function ToolsPage() {
           {/* Filter tabs */}
           <div className="space-y-3">
             {/* Integration filter */}
-            {integrationKeys.length > 1 && (
+            {providerConfigKeys.length > 1 && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mr-1">Provider:</span>
                 <button
@@ -242,8 +242,8 @@ export default function ToolsPage() {
                 >
                   All ({tools.length})
                 </button>
-                {integrationKeys.map((key) => {
-                  const count = tools.filter((t) => t.integrationKey === key).length;
+                {providerConfigKeys.map((key) => {
+                  const count = tools.filter((t) => t.providerConfigKey === key).length;
                   return (
                     <button
                       key={key}
@@ -328,7 +328,7 @@ export default function ToolsPage() {
                         </td>
                         <td className="px-3 py-3.5">
                           <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded-lg">
-                            {tool.integrationKey}
+                            {tool.providerConfigKey}
                           </span>
                         </td>
                         <td className="px-3 py-3.5">
@@ -454,7 +454,7 @@ function ToolDetailViewer({ tool, onClose }: { tool: ToolEntry; onClose: () => v
             <div className="grid grid-cols-2 gap-4">
               <ReadOnlyField label="Display Name" value={tool.displayName} />
               <ReadOnlyField label="Action Name" value={tool.actionName} mono />
-              <ReadOnlyField label="Integration Key" value={tool.integrationKey} mono />
+              <ReadOnlyField label="Provider Config Key" value={tool.providerConfigKey} mono />
               <ReadOnlyField label="Synced At" value={formatSyncTime(tool.syncedAt)} />
               {tool.description && (
                 <div className="col-span-2">

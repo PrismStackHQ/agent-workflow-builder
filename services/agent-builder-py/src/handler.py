@@ -45,7 +45,7 @@ async def register_handlers(nats: NatsService, db_factory) -> None:
                 # Check missing connections
                 connection_where = [
                     ConnectionRef.workspaceId == workspace_id,
-                    ConnectionRef.provider.in_(plan["connectors"]),
+                    ConnectionRef.providerConfigKey.in_(plan["connectors"]),
                     ConnectionRef.status == ConnectionStatus.READY,
                 ]
                 if end_user_id:
@@ -55,7 +55,7 @@ async def register_handlers(nats: NatsService, db_factory) -> None:
                     select(ConnectionRef).where(*connection_where)
                 )
                 ready_connections = ready_result.scalars().all()
-                ready_providers = {c.provider for c in ready_connections}
+                ready_providers = {c.providerConfigKey for c in ready_connections}
                 missing_keys = [c for c in plan["connectors"] if c not in ready_providers]
 
                 # Get integration display info
@@ -65,13 +65,13 @@ async def register_handlers(nats: NatsService, db_factory) -> None:
                     )
                 )
                 integrations = ai_result.scalars().all()
-                integration_lookup = {ai.providerKey: ai for ai in integrations}
+                integration_lookup = {ai.providerConfigKey: ai for ai in integrations}
 
                 missing_connections = []
                 for key in missing_keys:
                     ai = integration_lookup.get(key)
                     missing_connections.append({
-                        "providerKey": key,
+                        "providerConfigKey": key,
                         "displayName": ai.displayName if ai else key,
                         "logoUrl": ai.logoUrl if ai else None,
                     })

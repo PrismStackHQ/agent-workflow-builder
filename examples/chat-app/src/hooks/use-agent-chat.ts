@@ -14,7 +14,7 @@ function fallbackDisplayName(provider: string): string {
 }
 
 interface ConnectionInfoFromServer {
-  providerKey: string;
+  providerConfigKey: string;
   displayName: string;
   logoUrl?: string;
 }
@@ -96,7 +96,7 @@ export function useAgentChat() {
       const allReady = plan.missingConnections.every((provider) =>
         currentMessages.some(
           (msg) =>
-            msg.connectionCard?.provider === provider &&
+            msg.connectionCard?.providerConfigKey === provider &&
             msg.connectionCard?.connected,
         ),
       );
@@ -260,18 +260,18 @@ export function useAgentChat() {
           // Normalize: server sends ConnectionInfo objects, extract providerKeys for plan tracking
           const missingInfos: ConnectionInfoFromServer[] = rawMissing.map((item) =>
             typeof item === 'string'
-              ? { providerKey: item, displayName: fallbackDisplayName(item) }
+              ? { providerConfigKey: item, displayName: fallbackDisplayName(item) }
               : item,
           );
-          const missingKeys = missingInfos.map((c) => c.providerKey);
+          const missingKeys = missingInfos.map((c) => c.providerConfigKey);
 
           // Build connector display names from server data + missing connection info
           const serverDisplayNames = (p.connectorDisplayNames as Record<string, string>) || {};
           const connectorDisplayNames: Record<string, string> = { ...serverDisplayNames };
           // Also merge in display names from missing connection infos
           for (const info of missingInfos) {
-            if (!connectorDisplayNames[info.providerKey]) {
-              connectorDisplayNames[info.providerKey] = info.displayName;
+            if (!connectorDisplayNames[info.providerConfigKey]) {
+              connectorDisplayNames[info.providerConfigKey] = info.displayName;
             }
           }
 
@@ -320,7 +320,7 @@ export function useAgentChat() {
                 timestamp: new Date(),
                 status: 'processing',
                 connectionCard: {
-                  provider: conn.providerKey,
+                  providerConfigKey: conn.providerConfigKey,
                   displayName: conn.displayName,
                   logoUrl: conn.logoUrl,
                   connectionRefId: '',
@@ -383,7 +383,7 @@ export function useAgentChat() {
             timestamp: new Date(),
             status: 'processing',
             connectionCard: {
-              provider: p.provider as string,
+              providerConfigKey: p.provider as string,
               displayName: fallbackDisplayName(p.provider as string),
               connectionRefId: p.connectionRefId as string,
               agentDraftId: p.agentDraftId as string,
@@ -628,14 +628,14 @@ export function useAgentChat() {
           addMessage({
             id: uid(),
             role: 'agent',
-            content: `The workflow needs access to ${fallbackDisplayName(p.integrationKey as string)}. Please connect it to continue.`,
+            content: `The workflow needs access to ${fallbackDisplayName(p.providerConfigKey as string)}. Please connect it to continue.`,
             timestamp: new Date(),
             status: 'processing',
             agentId: p.agentId as string,
             runId: p.runId as string,
             connectionCard: {
-              provider: p.integrationKey as string,
-              displayName: fallbackDisplayName(p.integrationKey as string),
+              providerConfigKey: p.providerConfigKey as string,
+              displayName: fallbackDisplayName(p.providerConfigKey as string),
               connectionRefId: '',
               agentDraftId: '',
               connected: false,
@@ -645,7 +645,7 @@ export function useAgentChat() {
             steps: [
               {
                 id: uid(),
-                label: `Paused — waiting for ${fallbackDisplayName(p.integrationKey as string)} connection`,
+                label: `Paused — waiting for ${fallbackDisplayName(p.providerConfigKey as string)} connection`,
                 status: 'running',
                 icon: 'pause',
               },
@@ -762,7 +762,7 @@ export function useAgentChat() {
             'x-api-key': apiKey,
           },
           body: JSON.stringify({
-            integrationKey: provider,
+            providerConfigKey: provider,
             connectionId: nangoConnectionId,
             endUserId,
           }),
@@ -774,7 +774,7 @@ export function useAgentChat() {
       // Update the connection card in messages and check if plan can be shown
       setMessages((prev) => {
         const updated = prev.map((msg) => {
-          if (msg.connectionCard?.provider === provider && !msg.connectionCard?.connected) {
+          if (msg.connectionCard?.providerConfigKey === provider && !msg.connectionCard?.connected) {
             return {
               ...msg,
               status: 'complete' as const,
@@ -790,7 +790,7 @@ export function useAgentChat() {
           const allReady = plan.missingConnections.every((p) =>
             updated.some(
               (msg) =>
-                msg.connectionCard?.provider === p &&
+                msg.connectionCard?.providerConfigKey === p &&
                 msg.connectionCard?.connected,
             ),
           );

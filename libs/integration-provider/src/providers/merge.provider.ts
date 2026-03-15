@@ -26,10 +26,10 @@ export class MergeProvider implements IIntegrationProvider {
     _baseUrl: string,
     _apiKey: string,
     _connectionId: string,
-    integrationKey: string,
+    providerConfigKey: string,
   ): Promise<ConnectionCheckResult> {
     this.logger.log('Merge checkConnection not yet implemented');
-    return { connected: false, integrationKey, error: 'Merge not yet implemented' };
+    return { connected: false, providerConfigKey, error: 'Merge not yet implemented' };
   }
 
   async executeAction(): Promise<ActionExecutionResult> {

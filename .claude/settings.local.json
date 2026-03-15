@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:nango.dev)"
+      "WebFetch(domain:nango.dev)",
+      "Bash(cat \"/Users/dulan/Documents/Dulan/Agent-Workflow-Claude/frontend/web/src/app/\\(dashboard\\)/proxy-actions/page.tsx\")",
+      "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
+      "Bash(npx tsc:*)",
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*.json)",
+      "Bash(npx prisma:*)",
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/tsconfig*)",
+      "Bash(ls /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/api-gateway/tsconfig*)"
     ]
   }
 }

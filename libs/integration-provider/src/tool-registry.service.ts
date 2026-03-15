@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@agent-workflow/prisma-client';
 import { ProviderFactory } from './provider-factory.service';
 import { ProxyActionRegistry } from './proxy/proxy-action.registry';
-import { getTemplatesForProvider } from './proxy/proxy-action-templates';
+import { TemplateLoaderService } from './proxy/template-loader.service';
 
 @Injectable()
 export class ToolRegistryService {
@@ -12,6 +12,7 @@ export class ToolRegistryService {
     private readonly prisma: PrismaService,
     private readonly providerFactory: ProviderFactory,
     private readonly proxyRegistry: ProxyActionRegistry,
+    private readonly templateLoader: TemplateLoaderService,
   ) {}
 
   async syncTools(workspaceId: string): Promise<{ toolCount: number }> {
@@ -37,7 +38,7 @@ export class ToolRegistryService {
         data: tools.map((tool) => ({
           workspaceId,
           integrationProvider: config.integrationProvider as any,
-          integrationKey: tool.integrationKey,
+          providerConfigKey: tool.providerConfigKey,
           actionName: tool.actionName,
           displayName: tool.displayName,
           description: tool.description || null,
@@ -67,21 +68,21 @@ export class ToolRegistryService {
    * Auto-generate ProxyActionDefinition rows for each AvailableIntegration
    * that has templates defined.
    *
-   * Uses the actual Nango integration key (AvailableIntegration.providerKey)
-   * as providerConfigKey, so it matches ToolRegistryEntry.integrationKey directly.
+   * Uses the actual Nango integration key (AvailableIntegration.providerConfigKey)
+   * as providerConfigKey, so it matches ToolRegistryEntry.providerConfigKey directly.
    */
   private async ensureProxyActionDefinitions(workspaceId: string): Promise<void> {
     const availableIntegrations = await this.prisma.availableIntegration.findMany({
       where: { workspaceId },
-      select: { providerKey: true, displayName: true, rawMetadata: true },
+      select: { providerConfigKey: true, displayName: true, rawMetadata: true },
     });
 
     for (const ai of availableIntegrations) {
       const meta = ai.rawMetadata as Record<string, unknown> | null;
-      const providerType = (meta?.provider as string) || ai.providerKey;
-      const nangoKey = ai.providerKey; // actual Nango integration key
+      const providerType = (meta?.provider as string) || ai.providerConfigKey;
+      const nangoKey = ai.providerConfigKey; // actual Nango integration key
 
-      const templates = getTemplatesForProvider(providerType);
+      const templates = this.templateLoader.getTemplateForProvider(providerType);
       if (templates.length === 0) {
         this.logger.debug(`No proxy templates for provider type "${providerType}" (${ai.displayName})`);
         continue;
@@ -135,7 +136,7 @@ export class ToolRegistryService {
    * via getTools() and findToolByAction() alongside Nango-sourced actions.
    *
    * Since ProxyActionDefinition.providerConfigKey stores the actual Nango
-   * integration key, no key resolution is needed — they match directly.
+   * integration key, no key resolution is needed -- they match directly.
    */
   private async syncProxyTools(workspaceId: string, integrationProvider: string): Promise<number> {
     await this.proxyRegistry.ensureLoaded(workspaceId);
@@ -153,7 +154,7 @@ export class ToolRegistryService {
           },
         },
         update: {
-          integrationKey: config.providerConfigKey,
+          providerConfigKey: config.providerConfigKey,
           displayName: config.displayName,
           description: config.description,
           type: 'proxy',
@@ -171,7 +172,7 @@ export class ToolRegistryService {
         create: {
           workspaceId,
           integrationProvider: integrationProvider as any,
-          integrationKey: config.providerConfigKey,
+          providerConfigKey: config.providerConfigKey,
           actionName: config.actionName,
           displayName: config.displayName,
           description: config.description,
@@ -193,13 +194,13 @@ export class ToolRegistryService {
     return count;
   }
 
-  async getTools(workspaceId: string, integrationKey?: string) {
+  async getTools(workspaceId: string, providerConfigKey?: string) {
     const where: any = { workspaceId };
-    if (integrationKey) where.integrationKey = integrationKey;
+    if (providerConfigKey) where.providerConfigKey = providerConfigKey;
 
     return this.prisma.toolRegistryEntry.findMany({
       where,
-      orderBy: [{ integrationKey: 'asc' }, { actionName: 'asc' }],
+      orderBy: [{ providerConfigKey: 'asc' }, { actionName: 'asc' }],
     });
   }
 

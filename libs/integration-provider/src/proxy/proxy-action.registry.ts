@@ -11,7 +11,7 @@ import { DeclarativeConfigInterpreter } from './declarative-config-interpreter';
  * Results are cached per workspace with a configurable TTL.
  *
  * ProxyActionDefinition.providerConfigKey stores the actual Nango integration key
- * (e.g., "google-mail", "google-drive-4") which matches ToolRegistryEntry.integrationKey
+ * (e.g., "google-mail", "google-drive-4") which matches ToolRegistryEntry.providerConfigKey
  * directly — no normalization needed.
  */
 @Injectable()

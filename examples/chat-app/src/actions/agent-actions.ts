@@ -40,19 +40,19 @@ export async function listIntegrations() {
   return client.integrations.list();
 }
 
-export async function listTools(integrationKey?: string) {
+export async function listTools(providerConfigKey?: string) {
   const client = getClient();
-  return client.tools.list(integrationKey);
+  return client.tools.list(providerConfigKey);
 }
 
-export async function checkConnection(integrationKey: string, connectionId: string) {
+export async function checkConnection(providerConfigKey: string, connectionId: string) {
   const client = getClient();
-  return client.connections.check(integrationKey, connectionId);
+  return client.connections.check(providerConfigKey, connectionId);
 }
 
-export async function completeConnection(integrationKey: string, connectionId: string, endUserId?: string) {
+export async function completeConnection(providerConfigKey: string, connectionId: string, endUserId?: string) {
   const client = getClient();
-  return client.connections.complete(integrationKey, connectionId, endUserId);
+  return client.connections.complete(providerConfigKey, connectionId, endUserId);
 }
 
 export async function getConnectionEndpoint() {

@@ -1,5 +1,5 @@
 export interface ToolDefinition {
-  integrationKey: string;
+  providerConfigKey: string;
   actionName: string;
   displayName: string;
   description: string;
@@ -12,7 +12,7 @@ export interface ToolDefinition {
 export interface ConnectionCheckResult {
   connected: boolean;
   connectionId?: string;
-  integrationKey: string;
+  providerConfigKey: string;
   error?: string;
 }
 
@@ -40,7 +40,7 @@ export interface IIntegrationProvider {
   listTools(
     baseUrl: string,
     apiKey: string,
-    integrationKey?: string,
+    providerConfigKey?: string,
   ): Promise<ToolDefinition[]>;
 
   listConnections(
@@ -52,13 +52,13 @@ export interface IIntegrationProvider {
     baseUrl: string,
     apiKey: string,
     connectionId: string,
-    integrationKey: string,
+    providerConfigKey: string,
   ): Promise<ConnectionCheckResult>;
 
   executeAction(
     baseUrl: string,
     apiKey: string,
-    integrationKey: string,
+    providerConfigKey: string,
     connectionId: string,
     actionName: string,
     input: Record<string, unknown>,

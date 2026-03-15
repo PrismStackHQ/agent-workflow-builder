@@ -26,10 +26,10 @@ export class UnipileProvider implements IIntegrationProvider {
     _baseUrl: string,
     _apiKey: string,
     _connectionId: string,
-    integrationKey: string,
+    providerConfigKey: string,
   ): Promise<ConnectionCheckResult> {
     this.logger.log('Unipile checkConnection not yet implemented');
-    return { connected: false, integrationKey, error: 'Unipile not yet implemented' };
+    return { connected: false, providerConfigKey, error: 'Unipile not yet implemented' };
   }
 
   async executeAction(): Promise<ActionExecutionResult> {

@@ -30,7 +30,7 @@ export class ProviderExecutorService {
   async checkConnection(
     workspaceId: string,
     connectionId: string,
-    integrationKey: string,
+    providerConfigKey: string,
   ): Promise<ConnectionCheckResult> {
     const config = await this.getWorkspaceConfig(workspaceId);
     const provider = this.providerFactory.getProvider(config.integrationProvider!);
@@ -38,7 +38,7 @@ export class ProviderExecutorService {
       config.connectionEndpointUrl!,
       config.connectionEndpointApiKey!,
       connectionId,
-      integrationKey,
+      providerConfigKey,
     );
   }
 
@@ -53,7 +53,7 @@ export class ProviderExecutorService {
 
   async executeViaProvider(
     workspaceId: string,
-    integrationKey: string,
+    providerConfigKey: string,
     connectionId: string,
     actionName: string,
     input: Record<string, unknown>,
@@ -63,10 +63,10 @@ export class ProviderExecutorService {
 
     // Check if this action has a proxy configuration (Nango-specific)
     this.logger.log(
-      `executeViaProvider: integration="${integrationKey}" action="${actionName}" connection="${connectionId}" input=${JSON.stringify(input)}`,
+      `executeViaProvider: integration="${providerConfigKey}" action="${actionName}" connection="${connectionId}" input=${JSON.stringify(input)}`,
     );
     await this.proxyRegistry.ensureLoaded(workspaceId);
-    const proxyConfig = this.proxyRegistry.find(workspaceId, integrationKey, actionName);
+    const proxyConfig = this.proxyRegistry.find(workspaceId, providerConfigKey, actionName);
 
     if (proxyConfig && provider instanceof NangoProvider) {
       this.logger.log(
@@ -76,7 +76,7 @@ export class ProviderExecutorService {
         config.connectionEndpointUrl!,
         config.connectionEndpointApiKey!,
         connectionId,
-        integrationKey,
+        providerConfigKey,
         proxyConfig,
         input,
       );
@@ -84,13 +84,13 @@ export class ProviderExecutorService {
 
     // Fallback to standard action/trigger
     this.logger.warn(
-      `→ No proxy config found, falling back to Nango action/trigger API: ${actionName} on ${integrationKey}`,
+      `→ No proxy config found, falling back to Nango action/trigger API: ${actionName} on ${providerConfigKey}`,
     );
 
     return provider.executeAction(
       config.connectionEndpointUrl!,
       config.connectionEndpointApiKey!,
-      integrationKey,
+      providerConfigKey,
       connectionId,
       actionName,
       input,

@@ -9,7 +9,7 @@ import Nango from '@nangohq/frontend';
  * 4. Resolves when the user completes the connection
  */
 export function triggerNangoAuth(
-  integrationKey: string,
+  providerConfigKey: string,
   endUserId: string,
 ): Promise<{ connectionId: string; providerConfigKey: string }> {
   return new Promise((resolve, reject) => {
@@ -36,7 +36,7 @@ export function triggerNangoAuth(
         const res = await fetch('/api/nango/connect-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ integrationKey, endUserId }),
+          body: JSON.stringify({ providerConfigKey, endUserId }),
         });
         const data = await res.json();
 

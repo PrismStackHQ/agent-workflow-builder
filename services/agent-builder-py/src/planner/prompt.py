@@ -37,12 +37,12 @@ async def build_action_catalog(db: AsyncSession, workspace_id: str) -> str:
         return "(No actions available — the workspace has no registered integrations)"
 
     # Display name lookup
-    display_names = {ai.providerKey: ai.displayName for ai in integrations}
+    display_names = {ai.providerConfigKey: ai.displayName for ai in integrations}
 
     # Group by connector
     by_connector: dict[str, list] = {}
     for t in tools:
-        by_connector.setdefault(t.integrationKey, []).append(t)
+        by_connector.setdefault(t.providerConfigKey, []).append(t)
 
     sections = []
     for connector, actions in by_connector.items():

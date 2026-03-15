@@ -16,6 +16,7 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/services/api-gateway/dist ./dist
 COPY --from=build /app/libs/prisma-client/prisma ./prisma
+COPY templates/ ./templates/
 RUN mkdir -p node_modules/@agent-workflow && \
     for lib in shared-types nats-client prisma-client auth observability integration-provider; do \
       rm -rf node_modules/@agent-workflow/$lib && \

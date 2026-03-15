@@ -21,6 +21,47 @@ export class ProxyActionsController {
     return this.proxyActionsService.list(workspace.id);
   }
 
+  // ---- Template Catalog & Import (must be before :id routes) ----
+
+  @Get('templates/list')
+  @UseGuards(ApiKeyGuard)
+  async listTemplates(@CurrentWorkspace() workspace: any) {
+    return this.proxyActionsService.listTemplates(workspace.id);
+  }
+
+  @Get('templates/recommendations')
+  @UseGuards(ApiKeyGuard)
+  async getRecommendations(@CurrentWorkspace() workspace: any) {
+    return this.proxyActionsService.getRecommendations(workspace.id);
+  }
+
+  @Get('templates/:providerType')
+  @UseGuards(ApiKeyGuard)
+  async getTemplate(@Param('providerType') providerType: string) {
+    return this.proxyActionsService.getTemplate(providerType);
+  }
+
+  @Post('templates/:providerType/import')
+  @UseGuards(ApiKeyGuard)
+  async importTemplate(
+    @CurrentWorkspace() workspace: any,
+    @Param('providerType') providerType: string,
+    @Body() body: { providerConfigKey: string },
+  ) {
+    return this.proxyActionsService.importTemplate(workspace.id, providerType, body.providerConfigKey);
+  }
+
+  @Post('templates/upload')
+  @UseGuards(ApiKeyGuard)
+  async uploadTemplate(
+    @CurrentWorkspace() workspace: any,
+    @Body() body: { providerConfigKey: string; template: unknown },
+  ) {
+    return this.proxyActionsService.uploadTemplate(workspace.id, body.providerConfigKey, body.template);
+  }
+
+  // ---- CRUD & Toggle ----
+
   @Get(':id')
   @UseGuards(ApiKeyGuard)
   async getById(

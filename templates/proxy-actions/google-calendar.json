@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1",
+  "providerType": "google-calendar",
+  "displayName": "Google Calendar",
+  "description": "Calendar and event scheduling",
+  "actions": [
+    {
+      "actionName": "list_events",
+      "actionType": "LIST",
+      "displayName": "List Events",
+      "description": "List upcoming events from Google Calendar",
+      "method": "GET",
+      "endpoint": "/calendar/v3/calendars/primary/events",
+      "paramsConfig": {
+        "defaults": { "orderBy": "startTime", "singleEvents": "true" }
+      },
+      "responseConfig": { "rootPath": "items" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": { "type": "number", "description": "Max events to return (default: 10)", "default": "10", "aliases": ["limit"] }
+        }
+      }
+    },
+    {
+      "actionName": "get_event",
+      "actionType": "GET",
+      "displayName": "Get Event",
+      "description": "Get details of a specific calendar event",
+      "method": "GET",
+      "endpoint": "/calendar/v3/calendars/primary/events/{{eventId}}",
+      "inputSchema": {
+        "type": "object",
+        "required": ["eventId"],
+        "properties": {
+          "eventId": { "type": "string", "description": "The calendar event ID" }
+        }
+      }
+    }
+  ]
+}

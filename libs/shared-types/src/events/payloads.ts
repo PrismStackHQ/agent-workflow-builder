@@ -79,7 +79,7 @@ export interface RagQueryRequest {
 
 // Connection metadata sent with plan preview
 export interface ConnectionInfo {
-  providerKey: string;
+  providerConfigKey: string;
   displayName: string;
   logoUrl?: string;
 }
@@ -209,7 +209,7 @@ export interface AgentRunPausedEvent {
   runId: string;
   pausedAtStepIndex: number;
   reason: string;
-  integrationKey: string;
+  providerConfigKey: string;
   actionName: string;
   connectionId?: string;
   pausedAt: string;
@@ -288,7 +288,7 @@ export interface ToolRegistrySyncedEvent {
 export interface ConnectionCompletedEvent {
   orgId: string;
   workspaceId: string;
-  integrationKey: string;
+  providerConfigKey: string;
   connectionId: string;
   endUserId: string;
 }

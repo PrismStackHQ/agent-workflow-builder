@@ -146,9 +146,9 @@ class IntegrationsResource {
 class ToolsResource {
   constructor(private rest: RestClient) {}
 
-  list(integrationKey?: string): Promise<Tool[]> {
-    const qs = integrationKey
-      ? `?integrationKey=${encodeURIComponent(integrationKey)}`
+  list(providerConfigKey?: string): Promise<Tool[]> {
+    const qs = providerConfigKey
+      ? `?providerConfigKey=${encodeURIComponent(providerConfigKey)}`
       : '';
     return this.rest.get<Tool[]>(`/tools${qs}`);
   }
@@ -169,17 +169,17 @@ class ConnectionsResource {
   ) {}
 
   check(
-    integrationKey: string,
+    providerConfigKey: string,
     connectionId: string,
   ): Promise<ConnectionCheckResult> {
     return this.rest.post<ConnectionCheckResult>('/connections/check', {
-      integrationKey,
+      providerConfigKey,
       connectionId,
     });
   }
 
   async complete(
-    integrationKey: string,
+    providerConfigKey: string,
     connectionId: string,
     endUserId?: string,
     metadata?: Record<string, unknown>,
@@ -187,7 +187,7 @@ class ConnectionsResource {
     const resolvedEndUserId = endUserId ?? this.defaultEndUserId;
     if (!resolvedEndUserId) throw new Error('endUserId is required for connections.complete()');
     await this.rest.post('/connections/complete', {
-      integrationKey,
+      providerConfigKey,
       connectionId,
       endUserId: resolvedEndUserId,
       metadata,

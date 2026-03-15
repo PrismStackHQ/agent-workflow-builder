@@ -21,8 +21,8 @@ export function ConnectionCard({ card, onConnect }: ConnectionCardProps) {
     setConnecting(true);
     setError(null);
     try {
-      const result = await triggerNangoAuth(card.provider, card.endUserId || '');
-      onConnect(card.provider, card.endUserId || '', result.connectionId);
+      const result = await triggerNangoAuth(card.providerConfigKey, card.endUserId || '');
+      onConnect(card.providerConfigKey, card.endUserId || '', result.connectionId);
     } catch (err) {
       setConnecting(false);
       if (err instanceof Error && err.message !== 'Connection dialog closed') {

@@ -139,7 +139,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
 
   private async handleConnectionCompleted(
     client: AuthenticatedSocket,
-    payload: { integrationKey: string; connectionId: string; endUserId: string },
+    payload: { providerConfigKey: string; connectionId: string; endUserId: string },
   ) {
     if (!client.workspaceId) {
       this.send(client, { type: 'auth_failed', payload: { reason: 'Not authenticated' } });
@@ -149,7 +149,7 @@ export class WsGatewayService implements OnGatewayConnection, OnGatewayDisconnec
     await this.nats.publish(SUBJECTS.CONNECTION_COMPLETED, {
       orgId: client.orgId,
       workspaceId: client.workspaceId,
-      integrationKey: payload.integrationKey,
+      providerConfigKey: payload.providerConfigKey,
       connectionId: payload.connectionId,
       endUserId: payload.endUserId,
     });

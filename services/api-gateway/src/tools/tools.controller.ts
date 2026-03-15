@@ -25,9 +25,9 @@ export class ToolsController {
   @UseGuards(ApiKeyGuard)
   async listTools(
     @CurrentWorkspace() workspace: any,
-    @Query('integrationKey') integrationKey?: string,
+    @Query('providerConfigKey') providerConfigKey?: string,
   ) {
-    return this.toolRegistry.getTools(workspace.id, integrationKey);
+    return this.toolRegistry.getTools(workspace.id, providerConfigKey);
   }
 
   @Post('tools/sync')

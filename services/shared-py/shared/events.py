@@ -171,7 +171,7 @@ class AgentRunPausedEvent(BaseModel):
     runId: str
     pausedAtStepIndex: int
     reason: str
-    integrationKey: str
+    providerConfigKey: str
     actionName: str
     connectionId: str | None = None
     pausedAt: str
@@ -195,6 +195,6 @@ class AgentRunResumedEvent(BaseModel):
 class ConnectionCompletedEvent(BaseModel):
     orgId: str
     workspaceId: str
-    integrationKey: str
+    providerConfigKey: str
     connectionId: str
     endUserId: str

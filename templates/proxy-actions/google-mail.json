@@ -1,0 +1,211 @@
+{
+  "schemaVersion": "1",
+  "providerType": "google-mail",
+  "displayName": "Gmail",
+  "description": "Email service with search, read, and send capabilities",
+  "actions": [
+    {
+      "actionName": "search_emails",
+      "actionType": "SEARCH",
+      "displayName": "Search Emails",
+      "description": "Search for emails in Gmail using query syntax (subject, from, label, etc.)",
+      "method": "GET",
+      "endpoint": "/gmail/v1/users/me/messages",
+      "paramsConfig": {
+        "queryBuilder": {
+          "target": "q",
+          "join": " ",
+          "parts": [
+            { "template": "{{query}}", "when": "query" },
+            { "template": "{{keyword}}", "when": "keyword" },
+            { "template": "from:{{from}}", "when": "from" },
+            { "template": "to:{{to}}", "when": "to" }
+          ]
+        }
+      },
+      "responseConfig": { "rootPath": "messages" },
+      "postProcessConfig": {
+        "enrichment": {
+          "endpoint": "/gmail/v1/users/me/messages/{{id}}",
+          "params": { "format": "metadata", "metadataHeaders": "Subject,From,Date" },
+          "merge": ["snippet"],
+          "extractHeaders": {
+            "path": "payload.headers",
+            "keyField": "name",
+            "valueField": "value",
+            "pick": { "Subject": "subject", "From": "from", "Date": "date" }
+          },
+          "limit": 10
+        }
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "Gmail search query (e.g., \"from:user@example.com subject:invoice\")" },
+          "keyword": { "type": "string", "description": "Search keyword (alias for query)" },
+          "from": { "type": "string", "description": "Filter by sender email address" },
+          "to": { "type": "string", "description": "Filter by recipient email address" },
+          "maxResults": { "type": "number", "description": "Maximum number of results (default: 10)", "default": "10", "aliases": ["limit"] },
+          "labelIds": { "type": "string", "description": "Comma-separated label IDs to filter by", "mapTo": "labelIds" }
+        }
+      },
+      "outputSchema": {
+        "type": "array",
+        "description": "Array of email summaries with subject, from, date, and snippet.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "Message ID - pass to get_email to get full content" },
+            "threadId": { "type": "string" },
+            "subject": { "type": "string", "description": "Email subject line" },
+            "from": { "type": "string", "description": "Sender name and email" },
+            "date": { "type": "string", "description": "Date the email was sent" },
+            "snippet": { "type": "string", "description": "Short preview of the email body" }
+          }
+        }
+      }
+    },
+    {
+      "actionName": "list_emails",
+      "actionType": "LIST",
+      "displayName": "List Emails",
+      "description": "List recent emails from the inbox",
+      "method": "GET",
+      "endpoint": "/gmail/v1/users/me/messages",
+      "responseConfig": { "rootPath": "messages" },
+      "postProcessConfig": {
+        "enrichment": {
+          "endpoint": "/gmail/v1/users/me/messages/{{id}}",
+          "params": { "format": "metadata", "metadataHeaders": "Subject,From,Date" },
+          "merge": ["snippet"],
+          "extractHeaders": {
+            "path": "payload.headers",
+            "keyField": "name",
+            "valueField": "value",
+            "pick": { "Subject": "subject", "From": "from", "Date": "date" }
+          },
+          "limit": 10
+        }
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": { "type": "number", "description": "Maximum number of results (default: 10)", "default": "10", "aliases": ["limit"] }
+        }
+      }
+    },
+    {
+      "actionName": "get_email",
+      "actionType": "GET",
+      "displayName": "Get Email",
+      "description": "Get the full content of a specific email including subject, body, sender, and attachment info",
+      "method": "GET",
+      "endpoint": "/gmail/v1/users/me/messages/{{messageId}}",
+      "paramsConfig": { "defaults": { "format": "full" } },
+      "responseConfig": {
+        "extractHeaders": {
+          "path": "payload.headers",
+          "keyField": "name",
+          "valueField": "value",
+          "pick": { "Subject": "subject", "From": "from", "To": "to", "Date": "date" }
+        },
+        "mergeFields": { "id": "id", "threadId": "threadId", "snippet": "snippet", "labelIds": "labelIds" },
+        "bodyExtract": {
+          "partsPath": "payload.parts",
+          "fallbackPath": "payload.body.data",
+          "mimeType": "text/plain",
+          "outputField": "body"
+        },
+        "attachmentExtract": {
+          "partsPath": "payload.parts",
+          "filenameField": "filename",
+          "outputField": "attachments",
+          "hasField": "hasAttachments"
+        }
+      },
+      "inputSchema": {
+        "type": "object",
+        "required": ["messageId"],
+        "properties": {
+          "messageId": { "type": "string", "description": "The ID of the email message" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "subject": { "type": "string" },
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "date": { "type": "string" },
+          "snippet": { "type": "string", "description": "Short preview of the email body" },
+          "body": { "type": "string", "description": "Base64-encoded email body" },
+          "hasAttachments": { "type": "boolean" },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": { "type": "string" },
+                "mimeType": { "type": "string" },
+                "attachmentId": { "type": "string" },
+                "size": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "actionName": "get_attachment",
+      "actionType": "DOWNLOAD",
+      "displayName": "Get Attachment",
+      "description": "Download an email attachment by message ID and attachment ID",
+      "method": "GET",
+      "endpoint": "/gmail/v1/users/me/messages/{{messageId}}/attachments/{{attachmentId}}",
+      "inputSchema": {
+        "type": "object",
+        "required": ["messageId", "attachmentId"],
+        "properties": {
+          "messageId": { "type": "string", "description": "The email message ID" },
+          "attachmentId": { "type": "string", "description": "The attachment ID from get_email result" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "string", "description": "Base64-encoded attachment content" },
+          "size": { "type": "number", "description": "Attachment size in bytes" }
+        }
+      }
+    },
+    {
+      "actionName": "send_email",
+      "actionType": "SEND",
+      "displayName": "Send Email",
+      "description": "Send an email via Gmail with optional file attachment. Pass attachmentPath from generate_pdf/generate_excel/generate_csv to attach a file.",
+      "method": "POST",
+      "endpoint": "/gmail/v1/users/me/messages/send",
+      "bodyConfig": { "mimeEncode": true },
+      "inputSchema": {
+        "type": "object",
+        "required": ["to", "subject", "body"],
+        "properties": {
+          "to": { "type": "string", "description": "Recipient email address" },
+          "subject": { "type": "string", "description": "Email subject line" },
+          "body": { "type": "string", "description": "Plain text email body content" },
+          "cc": { "type": "string", "description": "CC recipient email address (optional)" },
+          "attachmentPath": { "type": "string", "description": "File path to attach (from generate_pdf, generate_excel, or generate_csv result)" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "ID of the sent message" },
+          "threadId": { "type": "string" },
+          "labelIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  ]
+}

@@ -96,8 +96,8 @@ class BrowserWsClient {
     this.send('oauth_complete', { connectionRefId, provider });
   }
 
-  sendConnectionCompleted(integrationKey: string, connectionId: string, endUserId: string) {
-    this.send('connection_completed', { integrationKey, connectionId, endUserId });
+  sendConnectionCompleted(providerConfigKey: string, connectionId: string, endUserId: string) {
+    this.send('connection_completed', { providerConfigKey, connectionId, endUserId });
   }
 
   onMessage(handler: MessageHandler): () => void {

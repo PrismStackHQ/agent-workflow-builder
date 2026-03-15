@@ -96,7 +96,7 @@ export interface Integration {
   id: string;
   workspaceId: string;
   integrationProvider: string;
-  providerKey: string;
+  providerConfigKey: string;
   displayName: string;
   logoUrl: string | null;
   rawMetadata: unknown;
@@ -110,7 +110,7 @@ export interface Tool {
   id: string;
   workspaceId: string;
   integrationProvider: string;
-  integrationKey: string;
+  providerConfigKey: string;
   actionName: string;
   displayName: string;
   description: string | null;
@@ -127,7 +127,7 @@ export interface Tool {
 export interface ConnectionCheckResult {
   connected: boolean;
   connectionId?: string;
-  integrationKey: string;
+  providerConfigKey: string;
   error?: string;
 }
 
@@ -171,7 +171,7 @@ export interface RunPausedEvent {
   agentId: string;
   runId: string;
   reason: string;
-  integrationKey: string;
+  providerConfigKey: string;
   actionName: string;
   pausedAt: string;
 }

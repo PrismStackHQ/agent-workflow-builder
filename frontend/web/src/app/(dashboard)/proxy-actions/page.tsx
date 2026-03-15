@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,30 @@ interface ProxyAction {
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+interface TemplateSummary {
+  providerType: string;
+  displayName: string;
+  description: string;
+  actionCount: number;
+  isImported: boolean;
+  importedActionCount: number;
+}
+
+interface TemplateFile {
+  schemaVersion: string;
+  providerType: string;
+  displayName: string;
+  description: string;
+  actions: Array<{
+    actionName: string;
+    actionType: string;
+    displayName: string;
+    description: string;
+    method: string;
+    endpoint: string;
+  }>;
 }
 
 const SOURCE_TYPE_COLORS: Record<string, string> = {
@@ -62,6 +86,7 @@ export default function ProxyActionsPage() {
   const [status, setStatus] = useState('');
   const [filterKey, setFilterKey] = useState('');
   const [editingAction, setEditingAction] = useState<ProxyAction | null>(null);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
 
   const loadActions = useCallback(async () => {
     setLoading(true);
@@ -122,12 +147,20 @@ export default function ProxyActionsPage() {
             Manage proxy action definitions that map to third-party API endpoints.
           </p>
         </div>
-        <Button onClick={loadActions} variant="secondary">
-          <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644l3.181-3.183" />
-          </svg>
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowTemplateLibrary(true)} variant="secondary">
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+            Template Library
+          </Button>
+          <Button onClick={loadActions} variant="secondary">
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 19.644l3.181-3.183" />
+            </svg>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {status && (
@@ -153,8 +186,11 @@ export default function ProxyActionsPage() {
               </svg>
               <p className="text-gray-500 mb-2">No proxy actions found.</p>
               <p className="text-sm text-gray-400 mb-4">
-                Sync your tools to auto-generate proxy action definitions for connected integrations.
+                Import from the template library or sync your tools to auto-generate proxy actions.
               </p>
+              <Button onClick={() => setShowTemplateLibrary(true)} variant="secondary">
+                Browse Template Library
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -286,6 +322,313 @@ export default function ProxyActionsPage() {
           onClose={() => setEditingAction(null)}
         />
       )}
+
+      {/* Template Library slide-over */}
+      {showTemplateLibrary && (
+        <TemplateLibrary
+          onClose={() => setShowTemplateLibrary(false)}
+          onImported={loadActions}
+        />
+      )}
     </div>
+  );
+}
+
+// ---- Template Library Slide-over ----
+
+function TemplateLibrary({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateFile | null>(null);
+  const [importingType, setImportingType] = useState<string | null>(null);
+  const [importKey, setImportKey] = useState('');
+  const [importResult, setImportResult] = useState('');
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadKey, setUploadKey] = useState('');
+  const [uploadJson, setUploadJson] = useState('');
+  const [uploadPreview, setUploadPreview] = useState<{ actions: Array<{ actionName: string; displayName: string; method: string; endpoint: string }> } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadTemplates();
+  }, []);
+
+  const loadTemplates = async () => {
+    setLoading(true);
+    try {
+      const data = await apiClient.listProxyActionTemplates();
+      if (Array.isArray(data)) setTemplates(data);
+    } catch {
+      setError('Failed to load templates');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePreview = async (providerType: string) => {
+    try {
+      const data = await apiClient.getProxyActionTemplate(providerType);
+      setPreviewTemplate(data);
+    } catch {
+      setError('Failed to load template preview');
+    }
+  };
+
+  const handleImport = async (providerType: string) => {
+    if (!importKey.trim()) {
+      setError('Provider config key is required');
+      return;
+    }
+    setImportingType(providerType);
+    try {
+      const result = await apiClient.importProxyActionTemplate(providerType, importKey.trim());
+      setImportResult(`Imported ${result.imported} actions (${result.skipped} skipped)`);
+      await loadTemplates();
+      onImported();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to import');
+    } finally {
+      setImportingType(null);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setUploadJson(text);
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.schemaVersion && parsed.providerType && Array.isArray(parsed.actions)) {
+          setUploadPreview(parsed);
+          setError('');
+        } else {
+          setError('Invalid template format: missing schemaVersion, providerType, or actions');
+          setUploadPreview(null);
+        }
+      } catch {
+        setError('Invalid JSON file');
+        setUploadPreview(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleUpload = async () => {
+    if (!uploadKey.trim()) {
+      setError('Provider config key is required for upload');
+      return;
+    }
+    setUploading(true);
+    try {
+      const template = JSON.parse(uploadJson);
+      const result = await apiClient.uploadProxyActionTemplate(uploadKey.trim(), template);
+      setImportResult(`Uploaded ${result.imported} actions (${result.skipped} skipped)`);
+      setShowUpload(false);
+      setUploadJson('');
+      setUploadPreview(null);
+      setUploadKey('');
+      await loadTemplates();
+      onImported();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to upload');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
+      <div
+        className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col border-l border-gray-200"
+        style={{ animation: 'slideInRight 0.2s ease-out' }}
+      >
+        {/* Header */}
+        <div className="h-14 border-b border-gray-100 flex items-center justify-between px-6 shrink-0">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-bold text-gray-900">Template Library</h3>
+            <span className="text-[10px] font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg">
+              {templates.length} templates
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setShowUpload(!showUpload)}>
+              <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              Upload
+            </Button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-700 px-4 py-2.5 rounded-xl text-sm border border-red-200 flex items-center justify-between">
+              {error}
+              <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {importResult && (
+            <div className="bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-xl text-sm border border-emerald-200 flex items-center justify-between">
+              {importResult}
+              <button onClick={() => setImportResult('')} className="text-emerald-400 hover:text-emerald-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Upload section */}
+          {showUpload && (
+            <div className="border border-dashed border-gray-300 rounded-xl p-4 space-y-3 bg-gray-50">
+              <h4 className="text-sm font-semibold text-gray-700">Upload Custom Template</h4>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileSelect}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+              {uploadPreview && (
+                <>
+                  <div className="text-xs text-gray-500">
+                    {uploadPreview.actions.length} actions found
+                  </div>
+                  <div className="space-y-1">
+                    {uploadPreview.actions.map((a) => (
+                      <div key={a.actionName} className="flex items-center gap-2 text-xs text-gray-600 bg-white px-3 py-1.5 rounded-lg">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${METHOD_COLORS[a.method] || 'bg-gray-100'}`}>
+                          {a.method}
+                        </span>
+                        <span className="font-medium">{a.displayName}</span>
+                        <span className="font-mono text-gray-400 truncate">{a.endpoint}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Provider Config Key</label>
+                    <input
+                      type="text"
+                      value={uploadKey}
+                      onChange={(e) => setUploadKey(e.target.value)}
+                      placeholder="e.g., custom-api"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                  <Button size="sm" onClick={handleUpload} loading={uploading}>
+                    Import {uploadPreview.actions.length} Actions
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Template list */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+            </div>
+          ) : templates.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 text-sm">
+              No templates available. Upload a custom template to get started.
+            </div>
+          ) : (
+            templates.map((t) => (
+              <div key={t.providerType} className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 bg-white">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold text-gray-900">{t.displayName}</h4>
+                      <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                        {t.providerType}
+                      </span>
+                      {t.isImported && (
+                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg">
+                          {t.importedActionCount}/{t.actionCount} imported
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>
+                    <p className="text-xs text-gray-400 mt-1">{t.actionCount} actions</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => previewTemplate?.providerType === t.providerType ? setPreviewTemplate(null) : handlePreview(t.providerType)}
+                    >
+                      {previewTemplate?.providerType === t.providerType ? 'Hide' : 'Preview'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Preview actions */}
+                {previewTemplate?.providerType === t.providerType && (
+                  <div className="border-t border-gray-100 bg-gray-50 px-5 py-3 space-y-2">
+                    {previewTemplate.actions.map((a) => (
+                      <div key={a.actionName} className="flex items-center gap-2 text-xs bg-white px-3 py-2 rounded-lg">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${METHOD_COLORS[a.method] || 'bg-gray-100'}`}>
+                          {a.method}
+                        </span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TYPE_COLORS[a.actionType] || 'bg-gray-100'}`}>
+                          {a.actionType}
+                        </span>
+                        <span className="font-medium text-gray-700">{a.displayName}</span>
+                        <span className="font-mono text-gray-400 truncate ml-auto">{a.endpoint}</span>
+                      </div>
+                    ))}
+
+                    {/* Import controls */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                      <input
+                        type="text"
+                        value={importKey}
+                        onChange={(e) => setImportKey(e.target.value)}
+                        placeholder="Provider config key (e.g., google-drive-4)"
+                        className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => handleImport(t.providerType)}
+                        loading={importingType === t.providerType}
+                      >
+                        Import
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
+    </>
   );
 }

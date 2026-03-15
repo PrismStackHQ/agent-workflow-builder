@@ -7,11 +7,11 @@ const nango = new Nango({
 });
 
 export async function POST(req: Request) {
-  const { integrationKey, endUserId } = await req.json();
+  const { providerConfigKey, endUserId } = await req.json();
 
-  if (!integrationKey || !endUserId) {
+  if (!providerConfigKey || !endUserId) {
     return NextResponse.json(
-      { error: 'integrationKey and endUserId are required' },
+      { error: 'providerConfigKey and endUserId are required' },
       { status: 400 },
     );
   }
@@ -24,14 +24,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    // integrationKey is already the Nango provider key (resolved from AvailableIntegration)
+    // providerConfigKey is the Nango provider key (resolved from AvailableIntegration)
     const res = await nango.createConnectSession({
       end_user: {
         id: endUserId,
         email: `${endUserId}@placeholder.local`,
         display_name: endUserId,
       },
-      allowed_integrations: [integrationKey],
+      allowed_integrations: [providerConfigKey],
     } as any);
 
     return NextResponse.json({ connectSession: res.data.token });

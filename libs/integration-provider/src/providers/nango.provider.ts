@@ -23,7 +23,7 @@ export class NangoProvider implements IIntegrationProvider {
   async listTools(
     baseUrl: string,
     apiKey: string,
-    integrationKey?: string,
+    providerConfigKey?: string,
   ): Promise<ToolDefinition[]> {
     const nangoBase = this.nangoBaseUrl(baseUrl);
     const res = await fetch(`${nangoBase}/scripts/config`, {
@@ -39,16 +39,16 @@ export class NangoProvider implements IIntegrationProvider {
     const tools: ToolDefinition[] = [];
 
     for (const config of configs) {
-      const providerConfigKey = config.providerConfigKey || config.provider_config_key || '';
+      const configKey = config.providerConfigKey || config.provider_config_key || '';
 
-      if (integrationKey && providerConfigKey !== integrationKey) {
+      if (providerConfigKey && configKey !== providerConfigKey) {
         continue;
       }
 
       const actions: any[] = config.actions || [];
       for (const action of actions) {
         tools.push({
-          integrationKey: providerConfigKey,
+          providerConfigKey: configKey,
           actionName: action.name,
           displayName: action.name,
           description: action.description || '',
@@ -62,7 +62,7 @@ export class NangoProvider implements IIntegrationProvider {
       const syncs: any[] = config.syncs || [];
       for (const sync of syncs) {
         tools.push({
-          integrationKey: providerConfigKey,
+          providerConfigKey: configKey,
           actionName: sync.name,
           displayName: sync.name,
           description: sync.description || '',
@@ -115,7 +115,7 @@ export class NangoProvider implements IIntegrationProvider {
     baseUrl: string,
     apiKey: string,
     connectionId: string,
-    integrationKey: string,
+    providerConfigKey: string,
   ): Promise<ConnectionCheckResult> {
     const nangoBase = this.nangoBaseUrl(baseUrl);
 
@@ -126,7 +126,7 @@ export class NangoProvider implements IIntegrationProvider {
       );
 
       if (!res.ok) {
-        return { connected: false, integrationKey, error: `Nango API error: ${res.status}` };
+        return { connected: false, providerConfigKey, error: `Nango API error: ${res.status}` };
       }
 
       const body: any = await res.json();
@@ -134,25 +134,25 @@ export class NangoProvider implements IIntegrationProvider {
 
       const match = connections.find(
         (c: any) =>
-          c.provider_config_key === integrationKey ||
-          c.provider === integrationKey,
+          c.provider_config_key === providerConfigKey ||
+          c.provider === providerConfigKey,
       );
 
       if (match && (!match.errors || match.errors.length === 0)) {
-        return { connected: true, connectionId: match.connection_id, integrationKey };
+        return { connected: true, connectionId: match.connection_id, providerConfigKey };
       }
 
-      return { connected: false, integrationKey };
+      return { connected: false, providerConfigKey };
     } catch (err) {
       this.logger.error(`Failed to check Nango connection: ${err}`);
-      return { connected: false, integrationKey, error: String(err) };
+      return { connected: false, providerConfigKey, error: String(err) };
     }
   }
 
   async executeAction(
     baseUrl: string,
     apiKey: string,
-    integrationKey: string,
+    providerConfigKey: string,
     connectionId: string,
     actionName: string,
     input: Record<string, unknown>,
@@ -166,7 +166,7 @@ export class NangoProvider implements IIntegrationProvider {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'Connection-Id': connectionId,
-          'Provider-Config-Key': integrationKey,
+          'Provider-Config-Key': providerConfigKey,
         },
         body: JSON.stringify({
           action_name: actionName,

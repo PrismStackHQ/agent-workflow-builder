@@ -53,7 +53,7 @@ async def run_planner(
         )
     )
     for ai in ai_result.scalars().all():
-        integration_lookup[ai.providerKey] = {
+        integration_lookup[ai.providerConfigKey] = {
             "displayName": ai.displayName,
             "logoUrl": ai.logoUrl,
         }

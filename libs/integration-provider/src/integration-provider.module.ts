@@ -8,6 +8,7 @@ import { ToolRegistryService } from './tool-registry.service';
 import { ProviderExecutorService } from './provider-executor.service';
 import { ProxyActionRegistry } from './proxy/proxy-action.registry';
 import { DeclarativeConfigInterpreter } from './proxy/declarative-config-interpreter';
+import { TemplateLoaderService } from './proxy/template-loader.service';
 
 @Module({
   imports: [PrismaModule],
@@ -20,6 +21,7 @@ import { DeclarativeConfigInterpreter } from './proxy/declarative-config-interpr
     ProviderExecutorService,
     ProxyActionRegistry,
     DeclarativeConfigInterpreter,
+    TemplateLoaderService,
   ],
   exports: [
     ProviderFactory,
@@ -27,6 +29,7 @@ import { DeclarativeConfigInterpreter } from './proxy/declarative-config-interpr
     ProviderExecutorService,
     ProxyActionRegistry,
     DeclarativeConfigInterpreter,
+    TemplateLoaderService,
   ],
 })
 export class IntegrationProviderModule {}

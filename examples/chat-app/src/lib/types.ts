@@ -23,7 +23,7 @@ export interface ChatStep {
 }
 
 export interface ConnectionCardData {
-  provider: string;
+  providerConfigKey: string;
   displayName: string;
   description?: string;
   logoUrl?: string;
