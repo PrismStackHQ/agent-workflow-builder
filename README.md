@@ -2,6 +2,10 @@
 
 An intelligent automation platform that converts natural language commands into scheduled, multi-step agent workflows. Users describe business processes in plain English — e.g., "read my daily emails, find receipts, and upload them to Google Drive" — and the platform orchestrates execution across integrated services.
 
+## Demo
+
+[![Demo Video](https://img.youtube.com/vi/_k5da8_aFNg/maxresdefault.jpg)](https://www.youtube.com/watch?v=_k5da8_aFNg)
+
 ## Architecture
 
 - **NestJS microservices** (TypeScript) + **Python services** (FastAPI/LangGraph) communicating via NATS JetStream
