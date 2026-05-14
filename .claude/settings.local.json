@@ -15,7 +15,8 @@
       "Bash(grep -r Agent-Workflow-Claude /Users/dulan/Documents/Dulan/Agent-Workflow-Claude --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=.prisma --include=*.json --include=*.yaml --include=*.yml --include=*.md --include=Dockerfile* --include=docker-compose* -n)",
       "Bash(grep -r agent-workflow-claude /Users/dulan/Documents/Dulan/Agent-Workflow-Claude --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=build --exclude-dir=.git --exclude-dir=.prisma --include=*.json --include=*.yaml --include=*.yml --include=*.md --include=Dockerfile* --include=docker-compose* -n)",
       "Bash(grep -r \"Agent-Workflow-Claude\\\\|agent-workflow-claude\" /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/libs/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/services/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/packages/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/frontend/*/package.json /Users/dulan/Documents/Dulan/Agent-Workflow-Claude/examples/*/package.json)",
-      "Bash(ls /Users/dulan/Documents/Dulan/agent-workflow-builder/frontend/web/src/app/\\\\\\(dashboard\\\\\\)/settings/)"
+      "Bash(ls /Users/dulan/Documents/Dulan/agent-workflow-builder/frontend/web/src/app/\\\\\\(dashboard\\\\\\)/settings/)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
