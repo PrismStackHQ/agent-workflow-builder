@@ -1,18 +1,149 @@
-name: Update Clone Stats
+name: Update Traffic Stats
 
 on:
   schedule:
-    - cron: "0 */12 * * *"
+    - cron: "0 */24 * * *"
   workflow_dispatch:
 
 jobs:
-  update:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clone Count Badge
-        uses: MShawon/github-clone-count-badge@main
+      - name: gh login
+        run: echo "${{ secrets.SECRET_TOKEN }}" | gh auth login --with-token
+
+      - name: Fetch latest clone & view counts
+        run: |
+          curl --user "${{ github.actor }}:${{ secrets.SECRET_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/traffic/clones \
+            > clone.json
+          curl --user "${{ github.actor }}:${{ secrets.SECRET_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/traffic/views \
+            > views.json
+
+      - name: Resolve gist and download previous counts
+        id: set_id
+        run: |
+          if gh secret list | grep -q "GIST_ID"
+          then
+              echo "GIST_ID found"
+              echo "GIST=${{ secrets.GIST_ID }}" >> $GITHUB_OUTPUT
+              curl https://gist.githubusercontent.com/${{ github.actor }}/${{ secrets.GIST_ID }}/raw/clone.json > clone_before.json
+              curl https://gist.githubusercontent.com/${{ github.actor }}/${{ secrets.GIST_ID }}/raw/views.json > views_before.json
+              if cat clone_before.json | grep '404: Not Found'; then
+                echo "GIST_ID not valid anymore. Creating another gist..."
+                gist_id=$(gh gist create clone.json views.json | awk -F / '{print $NF}')
+                echo $gist_id | gh secret set GIST_ID
+                echo "GIST=$gist_id" >> $GITHUB_OUTPUT
+                cp clone.json clone_before.json
+                cp views.json views_before.json
+                git rm --ignore-unmatch CLONE.md
+              fi
+              if cat views_before.json | grep -q '404: Not Found'; then
+                echo "views.json not yet in gist; seeding it"
+                cp views.json views_before.json
+              fi
+          else
+              echo "GIST_ID not found. Creating a gist..."
+              gist_id=$(gh gist create clone.json views.json | awk -F / '{print $NF}')
+              echo $gist_id | gh secret set GIST_ID
+              echo "GIST=$gist_id" >> $GITHUB_OUTPUT
+              cp clone.json clone_before.json
+              cp views.json views_before.json
+          fi
+
+      - name: Accumulate clone history (MShawon main.py)
+        run: |
+          curl https://raw.githubusercontent.com/MShawon/github-clone-count-badge/master/main.py > main.py
+          python3 main.py
+
+      - name: Accumulate view history
+        run: |
+          python3 <<'PY'
+          import json
+
+          with open('views.json', 'r') as fh:
+              now = json.load(fh)
+
+          try:
+              with open('views_before.json', 'r') as fh:
+                  before = json.load(fh)
+              if 'views' not in before:
+                  before = {'count': 0, 'uniques': 0, 'views': []}
+          except (FileNotFoundError, json.JSONDecodeError):
+              before = {'count': 0, 'uniques': 0, 'views': []}
+
+          timestamps = {before['views'][i]['timestamp']: i for i in range(len(before['views']))}
+
+          latest = dict(before)
+          for i in range(len(now.get('views', []))):
+              ts = now['views'][i]['timestamp']
+              if ts in timestamps:
+                  latest['views'][timestamps[ts]] = now['views'][i]
+              else:
+                  latest['views'].append(now['views'][i])
+
+          latest['count'] = sum(int(v['count']) for v in latest['views'])
+          latest['uniques'] = sum(int(v['uniques']) for v in latest['views'])
+
+          if len(timestamps) > 100:
+              remove_this = []
+              views = latest['views']
+              for i in range(len(timestamps) - 35):
+                  views[i]['timestamp'] = views[i]['timestamp'][:7]
+                  if views[i]['timestamp'] == views[i + 1]['timestamp'][:7]:
+                      views[i + 1]['count'] += views[i]['count']
+                      views[i + 1]['uniques'] += views[i]['uniques']
+                      remove_this.append(views[i])
+              for item in remove_this:
+                  views.remove(item)
+
+          with open('views.json', 'w', encoding='utf-8') as fh:
+              json.dump(latest, fh, ensure_ascii=False, indent=4)
+          PY
+
+      - name: Update gist with latest counts
+        run: |
+          clone_content=$(sed -e 's/\\/\\\\/g' -e 's/\t/\\t/g' -e 's/\"/\\"/g' -e 's/\r//g' "clone.json" | sed -E ':a;N;$!ba;s/\r{0,1}\n/\\n/g')
+          views_content=$(sed -e 's/\\/\\\\/g' -e 's/\t/\\t/g' -e 's/\"/\\"/g' -e 's/\r//g' "views.json" | sed -E ':a;N;$!ba;s/\r{0,1}\n/\\n/g')
+          echo '{"description": "${{ github.repository }} traffic statistics", "files": {"clone.json": {"content": "'"$clone_content"'"}, "views.json": {"content": "'"$views_content"'"}}}' > post_payload.json
+          curl -s -X PATCH \
+            --user "${{ github.actor }}:${{ secrets.SECRET_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d @post_payload.json https://api.github.com/gists/${{ steps.set_id.outputs.GIST }} > /dev/null 2>&1
+
+          if [ ! -f CLONE.md ]; then
+            shields_clone="https://img.shields.io/badge/dynamic/json?color=success&label=Clones&query=count&url="
+            shields_unique="https://img.shields.io/badge/dynamic/json?color=success&label=Unique%20Clones&query=uniques&url="
+            shields_views="https://img.shields.io/badge/dynamic/json?color=blue&label=Views&query=count&url="
+            shields_uviews="https://img.shields.io/badge/dynamic/json?color=blue&label=Unique%20Visitors&query=uniques&url="
+            clone_url="https://gist.githubusercontent.com/${{ github.actor }}/${{ steps.set_id.outputs.GIST }}/raw/clone.json"
+            views_url="https://gist.githubusercontent.com/${{ github.actor }}/${{ steps.set_id.outputs.GIST }}/raw/views.json"
+            repo="https://github.com/MShawon/github-clone-count-badge"
+            {
+              echo ''
+              echo '**Markdown**'
+              echo ''
+              echo '```markdown'
+              echo "[![Clones]($shields_clone$clone_url&logo=github)]($repo)"
+              echo "[![Unique Clones]($shields_unique$clone_url&logo=github)]($repo)"
+              echo "[![Views]($shields_views$views_url&logo=github)]($repo)"
+              echo "[![Unique Visitors]($shields_uviews$views_url&logo=github)]($repo)"
+              echo '```'
+            } > CLONE.md
+
+            git add CLONE.md
+            git config --global user.name "GitHub Action"
+            git config --global user.email "action@github.com"
+            git commit -m "create traffic badge"
+          fi
+
+      - name: Push
+        uses: ad-m/github-push-action@master
         with:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
