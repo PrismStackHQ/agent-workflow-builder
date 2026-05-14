@@ -1,21 +1,15 @@
 # Agent Workflow Platform
 
 <!--
-  Traffic badges (clones + views), accumulated beyond GitHub's 14-day API window
-  via the gist-accumulator pattern from MShawon/github-clone-count-badge.
-
-  Driven by .github/workflows/clone-stats.yml. After the workflow's first run:
-    1. Open the workflow logs and find the gist URL (or read CLONE.md the action commits).
-    2. Replace {GIST_USERNAME} with your GitHub handle (PAT owner).
-    3. Replace {GIST_ID} with the gist ID stored as the GIST_ID repo secret.
-
-  Required repo secret: SECRET_TOKEN — classic PAT with `repo`, `gist`, `read:user` scopes.
+  Traffic badges (clones + views), accumulated beyond GitHub's 14-day API window.
+  Source of truth: gist duladissa/8c8e0903815a6bf92243ac3cd974d021.
+  Updated daily by .github/workflows/clone-stats.yml.
 -->
 
-[![Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Clones&query=count&url=https://gist.githubusercontent.com/{GIST_USERNAME}/{GIST_ID}/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
-[![Unique Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Unique%20Clones&query=uniques&url=https://gist.githubusercontent.com/{GIST_USERNAME}/{GIST_ID}/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
-[![Views](https://img.shields.io/badge/dynamic/json?color=blue&label=Views&query=count&url=https://gist.githubusercontent.com/{GIST_USERNAME}/{GIST_ID}/raw/views.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
-[![Unique Visitors](https://img.shields.io/badge/dynamic/json?color=blue&label=Unique%20Visitors&query=uniques&url=https://gist.githubusercontent.com/{GIST_USERNAME}/{GIST_ID}/raw/views.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
+[![Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Clones&query=count&url=https://gist.githubusercontent.com/duladissa/8c8e0903815a6bf92243ac3cd974d021/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
+[![Unique Clones](https://img.shields.io/badge/dynamic/json?color=success&label=Unique%20Clones&query=uniques&url=https://gist.githubusercontent.com/duladissa/8c8e0903815a6bf92243ac3cd974d021/raw/clone.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
+[![Views](https://img.shields.io/badge/dynamic/json?color=blue&label=Views&query=count&url=https://gist.githubusercontent.com/duladissa/8c8e0903815a6bf92243ac3cd974d021/raw/views.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
+[![Unique Visitors](https://img.shields.io/badge/dynamic/json?color=blue&label=Unique%20Visitors&query=uniques&url=https://gist.githubusercontent.com/duladissa/8c8e0903815a6bf92243ac3cd974d021/raw/views.json&logo=github)](https://github.com/MShawon/github-clone-count-badge)
 
 An intelligent automation platform that converts natural language commands into scheduled, multi-step agent workflows. Users describe business processes in plain English — e.g., "read my daily emails, find receipts, and upload them to Google Drive" — and the platform orchestrates execution across integrated services.
 
